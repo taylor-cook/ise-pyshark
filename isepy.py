@@ -1,33 +1,24 @@
 import requests
+import pyshark
+from isepyshark.parser import parser
+from isepyshark.endpointsdb import endpointsdb
+# import pxgrid_pyshark
 import json
+# from pxgrid_pyshark import endpointsdb
+# from pxgrid_pyshark import parser
 from requests.auth import HTTPBasicAuth
 # from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 # # Suppress only the single InsecureRequestWarning from urllib3 needed
 # requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-
 fqdn = "https://10.0.1.85"
-# url = "https://10.0.1.85/api/v1/endpoint-custom-attribute"
 headers = {'Content-Type':'application/json'}
 username = 'api-admin'
 password = 'Password123'
-
-# variables = {'PanwIoTProfile':'String',
-#              'PanwIoTCategory':'String',
-#              'PanwIoTTag':'String',
-#              'PanwIoTHostname':'String',
-#              'PanwIoTOS':'String',
-#              'PanwIoTModel':'String',
-#              'PanwIoTVendor':'String',
-#              'PanwIoTSerial':'String',
-#              'PanwIoTEPP':'String',
-#              'PanwIoTAET':'String',
-#              'PanwIoTInternetAccess':'String',
-#              'PanwIoTIP':'IP',
-#              'PanwIoTRiskScore':'Int',
-#              'PanwIoTConfidence':'Int'
-#             }
+capture_file = "canopy.pcapng"
+default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || sip || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
+parser = parser()
 
 variables = {'isepyVendor':'String',
              'isepyModel':'String',
@@ -37,6 +28,7 @@ variables = {'isepyVendor':'String',
              'isepyDeviceID':'String',
              'isepyHostname':'String',
              'isepyIP':'IP',
+             'isepyProtocols':'String',
              'isepyCertainty':'Int'
             }
 newVariables = {}
@@ -83,7 +75,6 @@ def createAttribute(name, type):
     data = {"attributeName": name,"attributeType": type}
     response = requests.post(url, headers=headers, json=data, auth=HTTPBasicAuth(username, password), verify=False)
     if response.status_code == 200:
-        # print('Success!')
         # Process the response if necessary
         print(response.json())
     else:
@@ -94,7 +85,16 @@ def createAttribute(name, type):
 def getEndpoint(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
     response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-    print(response.json())
+    ## PRINT ENTIRE ENDPOINT RESULT
+    # # print(response.json())
+    ## GRAB ONLY CUSTOM ATTRIBUTES 
+    result = response.json()
+    custom_attributes = result.get('customAttributes', {})
+    custom_attributes_dict = {}
+    for key, value in custom_attributes.items():
+        custom_attributes_dict[key] = value
+    print("CUSTOM ATTRIB DICT")
+    print(custom_attributes_dict)
 
 def updateEndpoint(mac, update):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
@@ -106,6 +106,55 @@ def bulkUpdate(update):
     response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
     print(response.json())
 
+packet_callbacks = {
+    'mdns': parser.parse_mdns_v7,
+    'xml': parser.parse_xml,
+    'sip': parser.parse_sip,
+    'ssdp': parser.parse_ssdp,
+    'http': parser.parse_http,
+    'browser': parser.parse_smb_browser,
+}
+
+## Process network packets using global Parser instance and dictionary of supported protocols
+def process_packet(packet):
+    try:
+        highest_layer = packet.highest_layer
+        inspection_layer = str(highest_layer).split('_')[0]
+        ## If XML traffic included over HTTP, match on XML parsing
+        if inspection_layer == 'XML':
+            fn = parser.parse_xml(packet)
+            if fn is not None:
+                endpoints.update_db_list(fn)
+        else:
+            for layer in packet.layers:
+                fn = packet_callbacks.get(layer.layer_name)
+                if fn is not None:
+                    endpoints.update_db_list(fn(packet))
+    except Exception as e:
+        print(f'error processing packet details {highest_layer}: {e}')
+        # logger.debug(f'error processing packet details {highest_layer}: {e}')
+
+## Process a given PCAP(NG) file with a provided PCAP filter
+def process_capture_file(capture_file, capture_filter):
+    # if Path(capture_file).exists():
+    #     logger.debug(f'processing capture file: {capture_file}')
+    #     start_time = time.perf_counter()
+        capture = pyshark.FileCapture(capture_file, display_filter=capture_filter, only_summaries=False, include_raw=True, use_json=True)
+        currentPacket = 0
+        for packet in capture:
+            ## Wrap individual packet processing within 'try' statement to avoid formatting issues crashing entire process
+            try:
+                # print(f'packet parsed {packet.highest_layer}')
+                process_packet(packet)
+            except TypeError as e:
+                print(f'Error processing packet: {capture_file}, packet # {currentPacket}: TypeError: {e}')
+                # logger.debug(f'Error processing packet: {capture_file}, packet # {currentPacket}: TypeError: {e}')
+            currentPacket += 1
+        capture.close()
+        # end_time = time.perf_counter()
+        # logger.debug(f'processing capture file complete: execution time: {end_time - start_time:0.6f} : {currentPacket} packets processed ##')
+    # else:
+    #     logger.debug(f'capture file not found: {capture_file}')
 
 # def createAttribute(value):
 #     response = requests.post(url, headers=headers, data=value, auth=HTTPBasicAuth(username, password), verify=False)
@@ -123,32 +172,36 @@ def bulkUpdate(update):
 #     newVariables['attributeType'] = value
 #     createAttribute(json.dumps(newVariables))
 
-current_attribs = getExistingAttributes()
-check_attributes(current_attribs, variables)
+if __name__ == '__main__':
+    ## Validate that defined ISE instance has Custom Attributes defined
+    current_attribs = getExistingAttributes()
+    check_attributes(current_attribs, variables)
 
-getEndpoint('30:59:B7:EB:9D:5B')
-endpoint_list = []
+    print('### CREATING ENDPOINT DB ###')
+    endpoints = endpointsdb()
+    endpoints.create_database()
+    print('### Loading PCAP ###')
+    process_capture_file(capture_file, default_filter)
+    endpoints.view_all_entries()
+    endpoints.view_stats()
 
-update = {
-  "customAttributes": { "isepyVendor" : "Microsoft" },
-  "mac": "30:59:B7:EB:9D:5B"
-}
-endpoint_list.append(update)
-update = {
-  "customAttributes": { "isepyVendor" : "Apple" },
-  "mac": "8C:7A:AA:EA:8B:8A"
-}
-endpoint_list.append(update)
-# updateEndpoint('30:59:B7:EB:9D:5B', update)
-print(endpoint_list)
-bulkUpdate(endpoint_list)
-    
-# response = requests.post(url, headers=headers, data=json_data, auth=HTTPBasicAuth(username, password), verify=False)
-# if response.status_code == 200:
-#     print('Success!')
-#     # Process the response if necessary
-#     print(response.json())
-# else:
-#     print('Failed to send request.')
-#     print('Status code:', response.status_code)
-#     print('Response:', response.text)
+    # print("### GET ENDPOINT ###")
+    # getEndpoint('30:59:B7:EB:9D:5B')
+    # endpoint_list = []
+
+    # update = { 
+    # "customAttributes": { "isepyVendor" : "Microsoft" },
+    # "mac": "30:59:B7:EB:9D:5B"
+    # }
+    # endpoint_list.append(update)
+    # update = {
+    # "customAttributes": { "isepyVendor" : "Apple" },
+    # "mac": "8C:7A:AA:EA:8B:8A"
+    # }
+    # endpoint_list.append(update)
+    # # updateEndpoint('30:59:B7:EB:9D:5B', update)       ## Update a single endpoint by MAC
+    # print("### ENDPOINT LIST ###")
+    # print(endpoint_list)
+    # print("### BULK UPDATE ###")
+    # bulkUpdate(endpoint_list)                           ## Update multiple endpoints in one API call
+

@@ -1,0 +1,16 @@
+{
+    "osxvers=10":"OS X 10.6 Snow Leopard",
+    "osxvers=11":"OS X 10.7 Lion",
+    "osxvers=12":"OS X 10.8 Mountain Lion",
+    "osxvers=13":"OS X 10.9 Mavericks",
+    "osxvers=14":"OS X 10.10 Yosemite",
+    "osxvers=15":"OS X 10.11 El Capitan",
+    "osxvers=16":"macOS 10.12 Sierra",
+    "osxvers=17":"macOS 10.13 High Sierra",
+    "osxvers=18":"macOS 10.14 Mojave",
+    "osxvers=19":"macOS 10.15 Catalina",
+    "osxvers=20":"macOS 11 Big Sur",
+    "osxvers=21":"macOS 12 Monterey",
+    "osxvers=22":"macOS 13 Ventura",
+    "osxvers=23":"macOS 14 Sonoma"
+}
