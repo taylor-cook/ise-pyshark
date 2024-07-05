@@ -120,7 +120,7 @@ class endpointsdb:
             print(entry)
     
     ## View all entries in local DB with records that have not been updated and return as object
-    async def get_active_entries(self):
+    def get_active_entries(self):
         self.cursor.execute('SELECT * FROM endpoints WHERE updated = 0')
         entries = self.cursor.fetchall()
         return entries

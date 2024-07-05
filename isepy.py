@@ -1,3 +1,4 @@
+import time
 import requests
 import pyshark
 from isepyshark.parser import parser
@@ -13,10 +14,10 @@ from requests.auth import HTTPBasicAuth
 # requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 fqdn = "https://10.0.1.85"
-headers = {'Content-Type':'application/json'}
+headers = {'accept':'application/json','Content-Type':'application/json'}
 username = 'api-admin'
 password = 'Password123'
-capture_file = "canopy.pcapng"
+capture_file = "simulation.pcapng"
 default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || sip || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
 parser = parser()
 
@@ -29,7 +30,7 @@ variables = {'isepyVendor':'String',
              'isepyHostname':'String',
              'isepyIP':'IP',
              'isepyProtocols':'String',
-             'isepyCertainty':'Int'
+             'isepyCertainty':'String'
             }
 newVariables = {}
 
@@ -103,7 +104,7 @@ def updateEndpoint(mac, update):
 
 def bulkUpdate(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
-    response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+    response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
     print(response.json())
 
 packet_callbacks = {
@@ -174,16 +175,74 @@ def process_capture_file(capture_file, capture_filter):
 
 if __name__ == '__main__':
     ## Validate that defined ISE instance has Custom Attributes defined
+    print('### CHECKING ISE ATTRIBUTES ###')
+    start_time = time.time()
     current_attribs = getExistingAttributes()
     check_attributes(current_attribs, variables)
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
 
     print('### CREATING ENDPOINT DB ###')
+    start_time = time.time()
     endpoints = endpointsdb()
     endpoints.create_database()
-    print('### Loading PCAP ###')
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
+    
+    print('### LOADING PCAP ###')
+    start_time = time.time()
     process_capture_file(capture_file, default_filter)
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
     endpoints.view_all_entries()
-    endpoints.view_stats()
+    # endpoints.view_stats()
+
+    print('### GATHER ACTIVE ENDPOINTS')
+    results = endpoints.get_active_entries()
+    if results:
+        endpoint_list = []
+        for row in results:
+            ## Ignores the "assetID" field row[3]
+            # update = {
+            #     "customAttributes": { 
+            #         "isepyVendor": row[5],
+            #         "isepyModel": row[6],
+            #         "isepyOS": row[7],
+            #         "isepyType": row[10],
+            #         "isepySerial": row[9],
+            #         "isepyDeviceID": row[8],
+            #         "isepyHostname": row[4],
+            #         "isepyIP": row[2],
+            #         "isepyProtocols": row[1],
+            #         "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
+            #         },
+            #     "mac": row[0]
+            #     }
+            update = {
+                "customAttributes": { 
+                    "isepyVendor": row[5],
+                    "isepyModel": row[6],
+                    "isepyOS": row[7],
+                    "isepyType": row[10],
+                    "isepySerial": row[9],
+                    "isepyDeviceID": row[8],
+                    "isepyHostname": row[4],
+                    "isepyIP": row[2],
+                    "isepyProtocols": row[1],
+                    "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
+                    },
+                "mac": row[0]
+                }
+            endpoint_list.append(update)
+        print('### SEND UPDATE TO ISE ###')
+        start_time = time.time()
+        print(f'endpoint_list: {endpoint_list}')
+        print(f'json endpoints: {json.dumps(endpoint_list)}')
+        # bulkUpdate(json.dumps(endpoint_list))
+        bulkUpdate(endpoint_list)
+        end_time = time.time()
+        print(f'Time taken: {end_time - start_time} seconds')
+
 
     # print("### GET ENDPOINT ###")
     # getEndpoint('30:59:B7:EB:9D:5B')
