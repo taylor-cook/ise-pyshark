@@ -1,6 +1,7 @@
 import time
 import requests
 import pyshark
+import urllib3
 from isepyshark.parser import parser
 from isepyshark.endpointsdb import endpointsdb
 # import pxgrid_pyshark
@@ -9,16 +10,20 @@ import json
 # from pxgrid_pyshark import parser
 from requests.auth import HTTPBasicAuth
 # from requests.packages.urllib3.exceptions import InsecureRequestWarning
-
+from urllib3.exceptions import InsecureRequestWarning
 # # Suppress only the single InsecureRequestWarning from urllib3 needed
-# requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+urllib3.disable_warnings(InsecureRequestWarning)
 
-fqdn = "https://10.0.1.85"
+fqdn = "https://10.0.1.90"
 headers = {'accept':'application/json','Content-Type':'application/json'}
+headers2 = {'accept':'application/json'}
 username = 'api-admin'
 password = 'Password123'
-capture_file = "simulation.pcapng"
+capture_file = "captures/simulation.pcapng"
 default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || sip || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
+# mac_filter = 'eth.addr == aa:23:21:78:9f:cd'
+# if mac_filter != '':
+#     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
 
 variables = {'isepyVendor':'String',
@@ -85,27 +90,56 @@ def createAttribute(name, type):
 
 def getEndpoint(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
-    response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-    ## PRINT ENTIRE ENDPOINT RESULT
-    # # print(response.json())
-    ## GRAB ONLY CUSTOM ATTRIBUTES 
-    result = response.json()
-    custom_attributes = result.get('customAttributes', {})
-    custom_attributes_dict = {}
-    for key, value in custom_attributes.items():
-        custom_attributes_dict[key] = value
-    print("CUSTOM ATTRIB DICT")
-    print(custom_attributes_dict)
+    response = requests.get(url, headers=headers2, auth=HTTPBasicAuth(username, password), verify=False)
+    ## If an endpoint exists...
+    if response.status_code != 404:
+        result = response.json()
+        custom_attributes = result.get('customAttributes', {})
+        if custom_attributes ==  None:
+            return "no_values"
+        else:
+            custom_attributes_dict = {}
+            for key, value in custom_attributes.items():
+                custom_attributes_dict[key] = value
+            return custom_attributes
+    else:
+        return None
 
 def updateEndpoint(mac, update):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
     response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
     print(response.json())
 
-def bulkUpdate(update):
+def bulkUpdatePUT(update):
+    url = f'{fqdn}/api/v1/endpoint/bulk'
+    response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+    print(response.json())
+
+def bulkUpdatePOST(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
     response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
     print(response.json())
+
+def compare_arrays(array1, array2):
+    # Ensure both arrays are of the same length
+    if len(array1) != len(array2):
+        print("Arrays are of different lengths. Cannot compare.")
+        return
+
+    # Compare element-wise
+    for i in range(len(array1)):
+        # Convert strings to integers
+        value1 = int(array1[i])
+        value2 = int(array2[i])
+
+        # Compare values and print the result
+        if value1 > value2:
+            print(f"Index {i}: Array1 has a higher value ({value1} > {value2})")
+        elif value1 < value2:
+            print(f"Index {i}: Array2 has a higher value ({value2} > {value1})")
+        else:
+            print(f"Index {i}: Both values are equal ({value1} = {value2})")
+
 
 packet_callbacks = {
     'mdns': parser.parse_mdns_v7,
@@ -157,22 +191,6 @@ def process_capture_file(capture_file, capture_filter):
     # else:
     #     logger.debug(f'capture file not found: {capture_file}')
 
-# def createAttribute(value):
-#     response = requests.post(url, headers=headers, data=value, auth=HTTPBasicAuth(username, password), verify=False)
-#     if response.status_code == 200:
-#         # print('Success!')
-#         # Process the response if necessary
-#         print(response.json())
-#     else:
-#         print('Failed to send request.')
-#         print('Status code:', response.status_code)
-#         print('Response:', response.text)
-
-# for key, value in variables.items():
-#     newVariables['attributeName'] = key
-#     newVariables['attributeType'] = value
-#     createAttribute(json.dumps(newVariables))
-
 if __name__ == '__main__':
     ## Validate that defined ISE instance has Custom Attributes defined
     print('### CHECKING ISE ATTRIBUTES ###')
@@ -195,72 +213,80 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Time taken: {end_time - start_time} seconds')
     endpoints.view_all_entries()
-    # endpoints.view_stats()
 
+    ## DISABLE FOR TESTING...
+    # ''' 
     print('### GATHER ACTIVE ENDPOINTS')
     results = endpoints.get_active_entries()
+
     if results:
-        endpoint_list = []
+        endpoint_updates = []
+        endpoint_creates = []
         for row in results:
-            ## Ignores the "assetID" field row[3]
-            # update = {
-            #     "customAttributes": { 
-            #         "isepyVendor": row[5],
-            #         "isepyModel": row[6],
-            #         "isepyOS": row[7],
-            #         "isepyType": row[10],
-            #         "isepySerial": row[9],
-            #         "isepyDeviceID": row[8],
-            #         "isepyHostname": row[4],
-            #         "isepyIP": row[2],
-            #         "isepyProtocols": row[1],
-            #         "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
-            #         },
-            #     "mac": row[0]
-            #     }
-            update = {
-                "customAttributes": { 
+            attributes = {
                     "isepyVendor": row[5],
                     "isepyModel": row[6],
                     "isepyOS": row[7],
                     "isepyType": row[10],
                     "isepySerial": row[9],
                     "isepyDeviceID": row[8],
-                    "isepyHostname": row[4],
+                    "isepyHostname": row[4].replace("’","'"),
                     "isepyIP": row[2],
                     "isepyProtocols": row[1],
                     "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
-                    },
-                "mac": row[0]
-                }
-            endpoint_list.append(update)
-        print('### SEND UPDATE TO ISE ###')
+                    }
+
+            iseCustomAttrib = getEndpoint(row[0])
+            
+            if iseCustomAttrib == "no_values":
+                update = { "customAttributes": attributes, "mac": row[0] }
+                endpoint_updates.append(update)
+
+            elif iseCustomAttrib is None:
+                update = { "customAttributes": attributes, "mac": row[0] }
+                endpoint_creates.append(update)
+            else:
+                ### TODO -- Change logic to only if certainty is >= than existing certainty from ISE...
+                ### if equal, but "newData" field resolves to "false", don't update
+                ### if equal, but "newData" field resolves to "true", update
+                
+                ## Check if the existing ISE fields match the new attribute values
+                if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
+                    newData = False
+                    print(f'different values for {row[0]}')
+                    oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
+                    newCertainty = attributes['isepyCertainty'].split(',')
+                    if len(oldCertainty) != len(newCertainty):
+                        print(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+                    # Compare element-wise
+                    for i in range(len(oldCertainty)):
+                        # Convert strings to integers
+                        value1 = int(oldCertainty[i])
+                        value2 = int(newCertainty[i])
+                        if value2 > value1:
+                            newData = True
+                    if newData == True:
+                        update = { "customAttributes": attributes, "mac": row[0] } 
+                        endpoint_updates.append((update))
+        
+        print('### Checking for endpoint updates for ISE ###')
         start_time = time.time()
-        print(f'endpoint_list: {endpoint_list}')
-        print(f'json endpoints: {json.dumps(endpoint_list)}')
-        # bulkUpdate(json.dumps(endpoint_list))
-        bulkUpdate(endpoint_list)
+        if len(endpoint_updates) > 0:
+            print(f'### Updating {len(endpoint_updates)} endpoints in ISE ###')
+            chunk_size = 500
+            for i in range(0, len(endpoint_updates),chunk_size):
+                chunk = endpoint_updates[i:i + chunk_size]
+                bulkUpdatePUT(chunk)
+            # print(f'### endpoint_updates ###\n {json.dumps(endpoint_updates, ensure_ascii=False)}')
+        if len(endpoint_creates) > 0:
+            print(f'### Creating {len(endpoint_creates)} new endpoints in ISE ###')
+            chunk_size = 500
+            for i in range(0, len(endpoint_creates),chunk_size):
+                chunk = endpoint_creates[i:i + chunk_size]
+                bulkUpdatePOST(chunk)
+            # print(f'### endpoint_updates ###\n {json.dumps(endpoint_creates, ensure_ascii=False)}')
+        if (len(endpoint_creates) + len(endpoint_updates)) == 0:
+            print('### No updates sent to ISE ###')
         end_time = time.time()
         print(f'Time taken: {end_time - start_time} seconds')
-
-
-    # print("### GET ENDPOINT ###")
-    # getEndpoint('30:59:B7:EB:9D:5B')
-    # endpoint_list = []
-
-    # update = { 
-    # "customAttributes": { "isepyVendor" : "Microsoft" },
-    # "mac": "30:59:B7:EB:9D:5B"
-    # }
-    # endpoint_list.append(update)
-    # update = {
-    # "customAttributes": { "isepyVendor" : "Apple" },
-    # "mac": "8C:7A:AA:EA:8B:8A"
-    # }
-    # endpoint_list.append(update)
-    # # updateEndpoint('30:59:B7:EB:9D:5B', update)       ## Update a single endpoint by MAC
-    # print("### ENDPOINT LIST ###")
-    # print(endpoint_list)
-    # print("### BULK UPDATE ###")
-    # bulkUpdate(endpoint_list)                           ## Update multiple endpoints in one API call
-
+        # '''

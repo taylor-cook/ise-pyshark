@@ -20,7 +20,7 @@ class endpointsdb:
     ## Create table for holding endpoint data; remove table if already exists to avoid old data
     def create_database(self):
         logger.debug('create endpoints DB - starting')
-        self.cursor.execute('DROP TABLE IF EXISTS endpoints')
+        # self.cursor.execute('DROP TABLE IF EXISTS endpoints')
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS endpoints (
                 mac TEXT PRIMARY KEY, protocol TEXT, ip TEXT,
@@ -36,7 +36,7 @@ class endpointsdb:
         self.connection.commit()
         logger.debug('create endpoints DB - complete')
     
-    def update_db_list(self, values_list):
+    async def update_db_list(self, values_list):
         global records_created, records_updated                 # Values of DB record updates for efficiency tracking
         mac = values_list[0]                                    
         self.cursor.execute('SELECT * FROM endpoints WHERE mac = ?', (mac,))
@@ -111,22 +111,16 @@ class endpointsdb:
         self.connection.commit()
 
     ## Function for data validation (replace this with your logic)
-    def view_all_entries(self):
+    async def view_all_entries(self):
         self.cursor.execute('SELECT * FROM endpoints')
         entries = self.cursor.fetchall()
 
         print("All Entries in the 'endpoints' table:")
-        # for entry in entries:
-        #     print(entry)
-
-        column_names = [description[0] for description in self.cursor.description]
-        print('|'.join(column_names))
-
-        for row in entries:
-            print('|'.join(map(str,row)))
+        for entry in entries:
+            print(entry)
     
     ## View all entries in local DB with records that have not been updated and return as object
-    def get_active_entries(self):
+    async def get_active_entries(self):
         self.cursor.execute('SELECT * FROM endpoints WHERE updated = 0')
         entries = self.cursor.fetchall()
         return entries
@@ -137,10 +131,10 @@ class endpointsdb:
         self.cursor.execute('UPDATE endpoints SET updated = 1 WHERE mac = ?', (mac,))
         ise_updates += 1
 
-    def view_stats(self):
+    async def view_stats(self):
         logger.debug(f'Local DB records created: {records_created}')
         logger.debug(f'Local DB records updated: {records_updated}')
         logger.debug(f'Local DB records sent to ISE: {ise_updates}')
 
-    def close_connection(self):
+    async def close_connection(self):
         self.connection.close()

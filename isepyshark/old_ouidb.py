@@ -16,8 +16,7 @@ class ouidb:
         self.raw_data_file = raw_data_file
         self.pipe_file = pipe_file
         self.database_file = database_file
-        ### DON'T REDOWNLOAD OUI DURING TESTING
-        #self._initialize_database()
+        self._initialize_database()
 
     def _initialize_database(self):
         self.download_macoui_data()

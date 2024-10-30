@@ -10,21 +10,28 @@ from .ouidb import *
 apple_os_data, models_data, android_models = {}, {}, {}
 
 macoui_url = 'https://standards-oui.ieee.org/'
-macoui_raw_data_file = '/app/isepyshark/db/macoui.txt'
-macoui_pipe_file = '/app/isepyshark/db/macoui.pipe'
-macoui_database_file = '/app/isepyshark/db/macoui.db'
+## DOCKER VERSION
+# macoui_raw_data_file = '/app/isepyshark/db/macoui.txt'
+# macoui_pipe_file = '/app/isepyshark/db/macoui.pipe'
+# macoui_database_file = '/app/isepyshark/db/macoui.db'
+## PYTHON VERSION
+macoui_raw_data_file = './isepyshark/db/macoui.txt'
+macoui_pipe_file = './isepyshark/db/macoui.pipe'
+macoui_database_file = './isepyshark/db/macoui.db'
 oui_manager = ouidb(macoui_url, macoui_raw_data_file, macoui_pipe_file, macoui_database_file)
 
 logger = logging.getLogger(__name__)
 
 class parser:
     def __init__(self):
-        # self.apple_os_json = pkg_resources.resource_filename('pxgrid_pyshark','db/apple-os.json')
-        # self.models_json = pkg_resources.resource_filename('pxgrid_pyshark','db/models.json')
-        # self.android_json = pkg_resources.resource_filename('pxgrid_pyshark','db/androids.json')
-        self.apple_os_json = '/app/isepyshark/db/apple-os.json'
-        self.models_json = '/app/isepyshark/db/models.json'
-        self.android_json = '/app/isepyshark/db/androids.json'
+        ## DOCKER VERSION
+        # self.apple_os_json = '/app/isepyshark/db/apple-os.json'
+        # self.models_json = '/app/isepyshark/db/models.json'
+        # self.android_json = '/app/isepyshark/db/androids.json'
+        ## PYTHON VERSION
+        self.apple_os_json = './isepyshark/db/apple-os.json'
+        self.models_json = './isepyshark/db/models.json'
+        self.android_json = './isepyshark/db/androids.json'
         self._initialize_database()
     
     def _initialize_database(self):
@@ -163,6 +170,7 @@ class parser:
             if 'user_agent' in layer.field_names:
                 ua_string = layer.user_agent
                 user_agent = parse(ua_string)
+                model_match = False
                 if user_agent.os.family == 'Other' and 'Mac OS X' in ua_string:
                     asset_values[7] = 'Mac OS X'
                     asset_values[15] = 10
@@ -177,28 +185,28 @@ class parser:
                         asset_values[8] = user_agent.device.model
                         asset_values[16] = 50
                         if 'Android' in asset_values[7]:
-                            android_model_match = False
                             for model, result in android_models.items():
                                 if asset_values[8] == model:
-                                    android_model_match = True
+                                    model_match = True
                                     asset_values[6] = result['name']
                                     asset_values[10] = result['type']
                                     asset_values[14], asset_values[16], asset_values[18] = 80, 80, 80
                                     break
                             ## If model data doesn't match any record, record model data and use lower certainty
-                            if android_model_match is not True:
+                            if model_match == False:
                                 asset_values[16] = 30
                                 # logger.debug(f'No model found: {values[0]}: {values[5]} - {txt}')
-                
-                if user_agent.is_pc is True:
-                    asset_values[10] = 'Workstation'
-                    asset_values[18] = 50
-                elif user_agent.is_tablet is True:
-                    asset_values[10] = 'Tablet'
-                    asset_values[18] = 50
-                elif user_agent.is_mobile is True:
-                    asset_values[10] = 'Mobile Device'
-                    asset_values[18] = 50
+                ## If a more specific match was created, don't apply generic labels
+                if model_match == False:
+                    if user_agent.is_pc is True:
+                        asset_values[10] = 'Workstation'
+                        asset_values[18] = 50
+                    elif user_agent.is_tablet is True:
+                        asset_values[10] = 'Tablet'
+                        asset_values[18] = 50
+                    elif user_agent.is_mobile is True:
+                        asset_values[10] = 'Mobile Device'
+                        asset_values[18] = 50
             if 'request.line' in layer.field_names:
                 line = layer.line                                              # Store the request line as list
                 result = [text for text in line if 'FriendlyName' in text]     # If 'FriendlyName' in the line items
@@ -355,6 +363,11 @@ class parser:
             if layer.command == '0x01':             #If SMB host announcement
                 asset_values[4] = layer.server      #record the hostname field and weighting
                 asset_values[12] = 80
+            else:
+                layer = packet['NBDGM']             #If no SMB host announcment, check NetBIOS layer for NetBIOS name value
+                if layer.src.ip == asset_values[2]:
+                    asset_values[4] = layer.source_name[:-4]
+                    asset_values[12] = 20
             return asset_values
         except Exception as e:
             logger.debug(f'Error for {asset_values[1]} packet from {asset_values[0]}: {e}')
@@ -390,6 +403,16 @@ class parser:
                         asset_values = self.parse_model_and_os(asset_values, dns_txt)
                         return asset_values
                     elif layer._all_fields['Answers'][key]['dns.resp.type'] == '16' and '_raop._tcp' not in layer._all_fields['Answers'][key]['dns.resp.name'] and 'kerberos' not in layer._all_fields['Answers'][key]['dns.resp.name']:
+                        
+                        value = layer._all_fields['Answers'][key]['dns.resp.name']
+                        # if 'device-info' not in value and '._companion-link._tcp.local' not in value and '._ipp' not in value and ' Mac' not in value and '._airplay' not in value and '._rdlink' not in value:
+                        if 'spotify' in value:
+                            print(f'dns.resp.name = {value}')
+                        if '_amzn-alexa._tcp.local' in value:
+                            if 'Amazon' in asset_values[5] and '_amzn-alexa._tcp.local' in layer._all_fields['Answers'][key]['dns.resp.name']:
+                                asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'Smart Device'
+                                asset_values[14], asset_values[18] = 30, 30
+                        
                         result = layer._all_fields['Answers'][key]['dns.resp.name'].partition('.')[0]
                         if '@' in result:
                             asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
@@ -425,9 +448,10 @@ class parser:
                         if int(asset_values[12]) < 70:
                             if '@' in result:
                                 asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                asset_values[12] = 70
                             else:
                                 asset_values[4] = result
-                            asset_values[12] = 70
+                                asset_values[12] = 40
                     # print(f"ans: {key}")
             if int(layer.auth_rr) > 0:
                 for key in layer._all_fields['Authoritative nameservers']:
