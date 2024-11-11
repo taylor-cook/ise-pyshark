@@ -16,16 +16,22 @@ urllib3.disable_warnings(InsecureRequestWarning)
 
 fqdn = "https://10.0.1.90"
 headers = {'accept':'application/json','Content-Type':'application/json'}
-headers2 = {'accept':'application/json'}
 username = 'api-admin'
 password = 'Password123'
 capture_file = "captures/simulation.pcapng"
-default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || sip || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
-# mac_filter = 'eth.addr == aa:23:21:78:9f:cd'
+default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
+# mac_filter = 'eth.addr == 20:cf:ae:55:e0:02'
 # if mac_filter != '':
 #     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
-
+packet_callbacks = {
+    'mdns': parser.parse_mdns_v7,
+    'xml': parser.parse_xml,
+    'sip': parser.parse_sip,
+    'ssdp': parser.parse_ssdp,
+    'http': parser.parse_http,
+    'browser': parser.parse_smb_browser,
+}
 variables = {'isepyVendor':'String',
              'isepyModel':'String',
              'isepyOS':'String',
@@ -90,7 +96,7 @@ def createAttribute(name, type):
 
 def getEndpoint(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
-    response = requests.get(url, headers=headers2, auth=HTTPBasicAuth(username, password), verify=False)
+    response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
     ## If an endpoint exists...
     if response.status_code != 404:
         result = response.json()
@@ -140,16 +146,6 @@ def compare_arrays(array1, array2):
         else:
             print(f"Index {i}: Both values are equal ({value1} = {value2})")
 
-
-packet_callbacks = {
-    'mdns': parser.parse_mdns_v7,
-    'xml': parser.parse_xml,
-    'sip': parser.parse_sip,
-    'ssdp': parser.parse_ssdp,
-    'http': parser.parse_http,
-    'browser': parser.parse_smb_browser,
-}
-
 ## Process network packets using global Parser instance and dictionary of supported protocols
 def process_packet(packet):
     try:
@@ -179,6 +175,7 @@ def process_capture_file(capture_file, capture_filter):
         for packet in capture:
             ## Wrap individual packet processing within 'try' statement to avoid formatting issues crashing entire process
             try:
+                print(f'proccessing packet # {currentPacket}')
                 # print(f'packet parsed {packet.highest_layer}')
                 process_packet(packet)
             except TypeError as e:

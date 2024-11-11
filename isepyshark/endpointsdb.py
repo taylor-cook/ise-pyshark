@@ -12,6 +12,7 @@ class endpointsdb:
     def __init__(self, db_file='endpoint_database.db'):
         self.connection = sqlite3.connect(db_file)
         self.cursor = self.connection.cursor()
+        self.clear_database()
 
     def clear_database(self):
         self.cursor.execute('DROP TABLE IF EXISTS endpoints')
@@ -42,6 +43,8 @@ class endpointsdb:
         self.cursor.execute('SELECT * FROM endpoints WHERE mac = ?', (mac,))
         existing_record = self.cursor.fetchone()                # Grab any matching entry based on MAC
         if existing_record:
+            print(f'existing record: {existing_record}')
+            print(f'new record: {values_list}')
             update_values = {}                                  # Temp array to hold any new values
             if not existing_record[1] and values_list[1]:
                 update_values['protocol'] = values_list[1]
@@ -86,6 +89,7 @@ class endpointsdb:
                 update_values['timestamp'] = datetime.now().strftime("%H:%M:%S")
                 self.cursor.execute(f"UPDATE endpoints SET {update_query}", (*update_values.values(), values_list[0]))
                 records_updated += 1
+                print(f'record updated - {update_values}')
                 logger.debug(f'endpoint db record updated: {values_list[0]} - {values_list[1]} data')
                 
         else:
@@ -105,6 +109,7 @@ class endpointsdb:
                  values_list[3], values_list[4], values_list[5], values_list[6], values_list[7], values_list[8], values_list[9], values_list[10], 
                  values_list[11], values_list[12], values_list[13], values_list[14], values_list[15], values_list[16], values_list[17], values_list[18],
                  False, datetime.now().strftime("%H:%M:%S")))
+            print(f'record created - {values_list}')
             logger.debug(f'endpoint db record created: {values_list[0]} - {values_list[1]} data')
             records_created += 1
 
