@@ -21,7 +21,7 @@ fqdn = "https://10.0.1.90"
 headers = {'accept':'application/json','Content-Type':'application/json'}
 username = 'api-admin'
 password = 'Password123'
-capture_file = "captures/simulation.pcapng"
+capture_file = "captures/boston2.pcapng"
 default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
 default_bpf_filter = "(ip proto 0x2f || tcp port 80 || tcp port 8080 || udp port 1900 || udp port 138 || udp port 5060 || udp port 5353) and not ip6"
 capture_running = False
@@ -164,7 +164,7 @@ def connect_to_redis():
 def check_mac_redis_status(redis_client, mac_address, values):
     # Check if MAC address exists in the database
     if redis_client.exists(mac_address):
-        print(f"MAC address {mac_address} already exists in the database.")
+        print(f"redis MAC address {mac_address} already exists in the database.")
         
         # Retrieve existing values
         existing_values = redis_client.hgetall(mac_address)
@@ -172,16 +172,16 @@ def check_mac_redis_status(redis_client, mac_address, values):
         
         # Compare existing values with new values
         if existing_values_decoded != values:
-            print(f"MAC address {mac_address} has different values")
+            print(f"redis MAC address {mac_address} has different values")
             return False
         else:
-            print(f"MAC address {mac_address} already has the same values")
+            print(f"redis MAC address {mac_address} already has the same values")
             ## Endpoint is up to date in Redis DB
             return True
     else:
         # Update the record if MAC address does not exist
         redis_client.hset(mac_address, mapping=values)
-        print(f"MAC address {mac_address} added to the database with values")
+        print(f"redis MAC address {mac_address} added to the database with values")
         return False
 
 def print_all_endpoints(redis_client):
@@ -220,26 +220,27 @@ def process_packet(packet):
         print(f'error processing packet details {highest_layer}: {e}')
         # logger.debug(f'error processing packet details {highest_layer}: {e}')
 
-## Process network packets using global Parser instance and dictionary of supported protocols
-def process_packet(packet, highest_layer):
-    try:
-        ## Avoids any UDP/TCP.SEGMENT reassemblies and raw UDP/TCP packets
-        if '_' in highest_layer:        
-            inspection_layer = str(highest_layer).split('_')[0]
-            ## If XML traffic included over HTTP, match on XML parsing
-            if inspection_layer == 'XML':
-                fn = parser.parse_xml(packet)
-                if fn is not None:
-                    endpoints.update_db_list(fn)
-            else:
-                for layer in packet.layers:
-                    fn = packet_callbacks.get(layer.layer_name)
-                    if fn is not None:
-                        endpoints.update_db_list(fn(packet))
+# ## Process network packets using global Parser instance and dictionary of supported protocols
+# def process_packet(packet, highest_layer):
+#     try:
+#         ## Avoids any UDP/TCP.SEGMENT reassemblies and raw UDP/TCP packets
+#         if '_' in highest_layer:        
+#             inspection_layer = str(highest_layer).split('_')[0]
+#             ## If XML traffic included over HTTP, match on XML parsing
+#             if inspection_layer == 'XML':
+#                 fn = parser.parse_xml(packet)
+#                 if fn is not None:
+#                     endpoints.update_db_list(fn)
+#             else:
+#                 for layer in packet.layers:
+#                     fn = packet_callbacks.get(layer.layer_name)
+#                     if fn is not None:
+#                         endpoints.update_db_list(fn(packet))
         
-    except Exception as e:
-        print(f'error processing packet details {highest_layer}: {e}')
-        # logger.debug(f'error processing packet details {highest_layer}: {e}')
+#     except Exception as e:
+#         print(f'error processing packet details {highest_layer}: {e}')
+#         # logger.debug(f'error processing packet details {highest_layer}: {e}')
+
 
 ## Process a given PCAP(NG) file with a provided PCAP filter
 def process_capture_file(capture_file, capture_filter):
@@ -263,43 +264,116 @@ def process_capture_file(capture_file, capture_filter):
     # else:
     #     logger.debug(f'capture file not found: {capture_file}')
 
-def capture_live_packets(network_interface, bpf_filter):
-    global capture_count, skipped_packet
-    currentPacket = 0
-    # capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True, output_file='/tmp/pyshark.pcapng')
-    capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True)
-    # logger.debug(f'beginning capture instance to file: {capture._output_file}')
-    for packet in capture.sniff_continuously(packet_count=100):
-        try:
-            highest_layer = packet.highest_layer
-            if highest_layer not in ['DATA_RAW', 'TCP_RAW', 'UDP_RAW', 'JSON_RAW', 'DATA-TEXT-LINES_RAW', 'IMAGE-GIF_RAW', 'IMAGE-JFIF_RAW', 'PNG-RAW']:
-                process_packet(packet, highest_layer)
-            else:
-                skipped_packet += 1
-            currentPacket += 1
-        except Exception as e:
-            print(f'error processing packet {e}')
-            # logger.warning(f'error processing packet {e}')
-    capture.close()
-    # logger.debug(f'stopping capture instance')
-    ## Check for any orphaned 'dumpcap' processes from pyshark still running from old instance, and terminate them
-    time.sleep(1)
-    # proc_cleanup('dumpcap')
-    capture_count += 1
+# def capture_live_packets(network_interface, bpf_filter):
+#     global capture_count, skipped_packet
+#     currentPacket = 0
+#     # capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True, output_file='/tmp/pyshark.pcapng')
+#     capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True)
+#     # logger.debug(f'beginning capture instance to file: {capture._output_file}')
+#     for packet in capture.sniff_continuously(packet_count=100):
+#         try:
+#             highest_layer = packet.highest_layer
+#             if highest_layer not in ['DATA_RAW', 'TCP_RAW', 'UDP_RAW', 'JSON_RAW', 'DATA-TEXT-LINES_RAW', 'IMAGE-GIF_RAW', 'IMAGE-JFIF_RAW', 'PNG-RAW']:
+#                 process_packet(packet, highest_layer)
+#             else:
+#                 skipped_packet += 1
+#             currentPacket += 1
+#         except Exception as e:
+#             print(f'error processing packet {e}')
+#             # logger.warning(f'error processing packet {e}')
+#     capture.close()
+#     # logger.debug(f'stopping capture instance')
+#     ## Check for any orphaned 'dumpcap' processes from pyshark still running from old instance, and terminate them
+#     time.sleep(1)
+#     # proc_cleanup('dumpcap')
+#     capture_count += 1
 
-async def default_update_loop():
-    try:
-        count = 0
-        while True:
-            await asyncio.sleep(5.0)
-            results = await endpoints.get_active_entries()
-            print(f'local db records pending update to ISE: {len(results)}')
-            if results:
-                for row in results:
-                    print(f'record to update: {row}')
-    except asyncio.CancelledError as e:
-        pass
-    print(f'shutting down loop instance')
+# async def default_update_loop():
+#     try:
+#         # count = 0
+#         while True:
+#             await asyncio.sleep(5.0)
+#             results = await endpoints.get_active_entries()
+#             print(f'local db records pending update to ISE: {len(results)}')
+#             if results:
+#                 endpoint_updates = []
+#                 endpoint_creates = []
+#                 for row in results:
+#                     attributes = {
+#                     "isepyVendor": row[5],
+#                     "isepyModel": row[6],
+#                     "isepyOS": row[7],
+#                     "isepyType": row[10],
+#                     "isepySerial": row[9],
+#                     "isepyDeviceID": row[8],
+#                     "isepyHostname": row[4].replace("’","'"),
+#                     "isepyIP": row[2],
+#                     "isepyProtocols": row[1],
+#                     "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
+#                     }
+
+#                     if check_mac_redis_status(redis_client,row[0],attributes) == False:
+#                         print(f'retreiving data from ISE for endpoint - {row[0]}')
+#                         iseCustomAttrib = getEndpoint(row[0])
+
+#                         if iseCustomAttrib == "no_values":
+#                             update = { "customAttributes": attributes, "mac": row[0] }
+#                             print(f'scheduling update for endpoint - {row[0]}')
+#                             endpoint_updates.append(update)
+
+#                         elif iseCustomAttrib is None:
+#                             update = { "customAttributes": attributes, "mac": row[0] }
+#                             print(f'scheduling creation of endpoint - {row[0]}')
+#                             endpoint_creates.append(update)
+#                         else:
+#                             ### TODO -- Change logic to only if certainty is >= than existing certainty from ISE...
+#                             ### if equal, but "newData" field resolves to "false", don't update
+#                             ### if equal, but "newData" field resolves to "true", update
+                            
+#                             ## Check if the existing ISE fields match the new attribute values
+#                             if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
+#                                 newData = False
+#                                 print(f'different values for {row[0]}')
+#                                 oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
+#                                 newCertainty = attributes['isepyCertainty'].split(',')
+#                                 if len(oldCertainty) != len(newCertainty):
+#                                     print(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+#                                 # Compare element-wise
+#                                 for i in range(len(oldCertainty)):
+#                                     # Convert strings to integers
+#                                     value1 = int(oldCertainty[i])
+#                                     value2 = int(newCertainty[i])
+#                                     if value2 > value1:
+#                                         newData = True
+#                                 if newData == True:
+#                                     update = { "customAttributes": attributes, "mac": row[0] } 
+#                                     endpoint_updates.append((update))
+
+
+#                     # record = []
+#                     # print(f'ISE record to update: {row}')
+#                     # for key, value in row.items():
+#                     #     record.append(key, value)
+
+
+#                     # if check_mac_redis_status(redis_client,row[0],record) == False:
+#                     #     print(f'querying ISE for endpoint {row[0]}')
+#                     #     iseCustomAttrib = getEndpoint(row[0])
+                        
+#                     #     if iseCustomAttrib == "no_values":
+#                     #         update = { "customAttributes": attributes, "mac": row[0] }
+#                     #         endpoint_updates.append(update)
+
+#                     #     elif iseCustomAttrib is None:
+#                     #         update = { "customAttributes": attributes, "mac": row[0] }
+#                     #         endpoint_creates.append(update)
+
+                    
+#     except Exception as e:
+#         print(f'error occurred - {e}')
+#     # except asyncio.CancelledError as e:
+#     #     pass
+#     print(f'shutting down loop instance')
 
 
 if __name__ == '__main__':
@@ -311,62 +385,66 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Time taken: {end_time - start_time} seconds')
 
-    print('### CREATING ENDPOINT DB ###')
+    print('### CREATING ENDPOINT SQLDB and REDIS DB ###')
     start_time = time.time()
     endpoints = endpointsdb()
     endpoints.create_database()
+    redis_client = connect_to_redis()
     end_time = time.time()
     print(f'Time taken: {end_time - start_time} seconds')
     
-    # ## PCAP PARSING SECTION
-    # print('### LOADING PCAP ###')
-    # start_time = time.time()
-    # process_capture_file(capture_file, default_filter)
-    # end_time = time.time()
-    # print(f'Time taken: {end_time - start_time} seconds')
-    # endpoints.view_all_entries()
+    ## PCAP PARSING SECTION
+    print('### LOADING PCAP ###')
+    start_time = time.time()
+    process_capture_file(capture_file, default_filter)
+    end_time = time.time()
+    print(f'Time taken: {end_time - start_time} seconds')
+    endpoints.view_all_entries()
 
-    ## Setup the publishing loop
-    main_task = asyncio.ensure_future(
-        default_update_loop()
-        )
-
-    ## Setup sigint/sigterm handlers
-    def signal_handlers():
-        global capture_running
-        main_task.cancel()
-        # reregister_task.cancel()
-        capture_running = False
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(SIGINT, signal_handlers)
-    loop.add_signal_handler(SIGTERM, signal_handlers)
-
-    ## LIVE PCAP SECTION
-    capture_running = True
-
-    try:
-        while capture_running:
-            try:
-                capture_live_packets('en0', default_bpf_filter)
-            except Exception as e:
-                print(f'error with catpure instance {e}')
-    except KeyboardInterrupt:
-        print(f'closing capture down due to keyboard interrupt')
-        capture_running = False
-        # sys.exit(0)
+    # ### LIVE CAPTURE SETTINGS
     
-    try:
-        loop.run_until_complete(main_task)
-    except:
-        pass
-    print(f'### LIVE PACKET CAPTURE STOPPED ##')
+    # ## Setup the publishing loop
+    # main_task = asyncio.ensure_future(
+    #     default_update_loop()
+    #     )
+
+    # ## Setup sigint/sigterm handlers
+    # def signal_handlers():
+    #     global capture_running
+    #     main_task.cancel()
+    #     # reregister_task.cancel()
+    #     capture_running = False
+    # loop = asyncio.get_event_loop()
+    # loop.add_signal_handler(SIGINT, signal_handlers)
+    # loop.add_signal_handler(SIGTERM, signal_handlers)
+
+    # ## LIVE PCAP SECTION
+    # capture_running = True
+
+    # try:
+    #     while capture_running:
+    #         try:
+    #             capture_live_packets('en0', default_bpf_filter)
+    #         except Exception as e:
+    #             print(f'error with catpure instance {e}')
+    # except KeyboardInterrupt:
+    #     print(f'closing capture down due to keyboard interrupt')
+    #     capture_running = False
+    #     # sys.exit(0)
+    
+    # try:
+    #     loop.run_until_complete(main_task)
+    # except:
+    #     pass
+    # print(f'### LIVE PACKET CAPTURE STOPPED ##')
+    
+    # ### END LIVE CAPTURE TESTING
 
     ## DISABLE FOR TESTING...
     # ''' 
     print('### GATHER ACTIVE ENDPOINTS')
     start_time = time.time()
     results = endpoints.get_active_entries()
-    redis_client = connect_to_redis()
     print(f'number of redis entries: {redis_client.dbsize()}')
 
     if results:
