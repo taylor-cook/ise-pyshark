@@ -2,6 +2,9 @@ import time
 import requests
 import pyshark
 import urllib3
+import redis
+import asyncio
+from signal import SIGINT, SIGTERM
 from isepyshark.parser import parser
 from isepyshark.endpointsdb import endpointsdb
 # import pxgrid_pyshark
@@ -20,6 +23,11 @@ username = 'api-admin'
 password = 'Password123'
 capture_file = "captures/simulation.pcapng"
 default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
+default_bpf_filter = "(ip proto 0x2f || tcp port 80 || tcp port 8080 || udp port 1900 || udp port 138 || udp port 5060 || udp port 5353) and not ip6"
+capture_running = False
+capture_count = 0
+skipped_packet = 0
+
 # mac_filter = 'eth.addr == 20:cf:ae:55:e0:02'
 # if mac_filter != '':
 #     default_filter = mac_filter + ' && ' + default_filter
@@ -97,6 +105,7 @@ def createAttribute(name, type):
 def getEndpoint(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
     response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
+    print(f'requesting ISE data for {mac}')
     ## If an endpoint exists...
     if response.status_code != 404:
         result = response.json()
@@ -146,6 +155,52 @@ def compare_arrays(array1, array2):
         else:
             print(f"Index {i}: Both values are equal ({value1} = {value2})")
 
+### REDIS SECTION
+def connect_to_redis():
+    # Connect to Redis server
+    r = redis.Redis(host='localhost', port=6379, db=0)
+    return r
+
+def check_mac_redis_status(redis_client, mac_address, values):
+    # Check if MAC address exists in the database
+    if redis_client.exists(mac_address):
+        print(f"MAC address {mac_address} already exists in the database.")
+        
+        # Retrieve existing values
+        existing_values = redis_client.hgetall(mac_address)
+        existing_values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_values.items()}
+        
+        # Compare existing values with new values
+        if existing_values_decoded != values:
+            print(f"MAC address {mac_address} has different values")
+            return False
+        else:
+            print(f"MAC address {mac_address} already has the same values")
+            ## Endpoint is up to date in Redis DB
+            return True
+    else:
+        # Update the record if MAC address does not exist
+        redis_client.hset(mac_address, mapping=values)
+        print(f"MAC address {mac_address} added to the database with values")
+        return False
+
+def print_all_endpoints(redis_client):
+    # Retrieve and print all MAC addresses and their values in the database
+    keys = redis_client.keys('*')  # Get all keys in the database
+    print("All endpoints in the Redis DB:")
+    for key in keys:
+        key_str = key.decode('utf-8')
+        if redis_client.type(key) == b'hash':  # Ensure the key is a hash
+            values = redis_client.hgetall(key_str)
+            values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in values.items()}
+            print(f"MAC Address: {key_str}, Values: {values_decoded}")
+
+def clear_redis_db(redis_client):
+    # Clear all entries in the Redis database
+    redis_client.flushdb()
+    print("All entries in the Redis DB have been cleared.")
+####
+
 ## Process network packets using global Parser instance and dictionary of supported protocols
 def process_packet(packet):
     try:
@@ -165,6 +220,27 @@ def process_packet(packet):
         print(f'error processing packet details {highest_layer}: {e}')
         # logger.debug(f'error processing packet details {highest_layer}: {e}')
 
+## Process network packets using global Parser instance and dictionary of supported protocols
+def process_packet(packet, highest_layer):
+    try:
+        ## Avoids any UDP/TCP.SEGMENT reassemblies and raw UDP/TCP packets
+        if '_' in highest_layer:        
+            inspection_layer = str(highest_layer).split('_')[0]
+            ## If XML traffic included over HTTP, match on XML parsing
+            if inspection_layer == 'XML':
+                fn = parser.parse_xml(packet)
+                if fn is not None:
+                    endpoints.update_db_list(fn)
+            else:
+                for layer in packet.layers:
+                    fn = packet_callbacks.get(layer.layer_name)
+                    if fn is not None:
+                        endpoints.update_db_list(fn(packet))
+        
+    except Exception as e:
+        print(f'error processing packet details {highest_layer}: {e}')
+        # logger.debug(f'error processing packet details {highest_layer}: {e}')
+
 ## Process a given PCAP(NG) file with a provided PCAP filter
 def process_capture_file(capture_file, capture_filter):
     # if Path(capture_file).exists():
@@ -175,8 +251,7 @@ def process_capture_file(capture_file, capture_filter):
         for packet in capture:
             ## Wrap individual packet processing within 'try' statement to avoid formatting issues crashing entire process
             try:
-                print(f'proccessing packet # {currentPacket}')
-                # print(f'packet parsed {packet.highest_layer}')
+                # print(f'proccessing packet # {currentPacket} - {packet.highest_layer}')
                 process_packet(packet)
             except TypeError as e:
                 print(f'Error processing packet: {capture_file}, packet # {currentPacket}: TypeError: {e}')
@@ -187,6 +262,45 @@ def process_capture_file(capture_file, capture_filter):
         # logger.debug(f'processing capture file complete: execution time: {end_time - start_time:0.6f} : {currentPacket} packets processed ##')
     # else:
     #     logger.debug(f'capture file not found: {capture_file}')
+
+def capture_live_packets(network_interface, bpf_filter):
+    global capture_count, skipped_packet
+    currentPacket = 0
+    # capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True, output_file='/tmp/pyshark.pcapng')
+    capture = pyshark.LiveCapture(interface=network_interface, bpf_filter=bpf_filter, include_raw=True, use_json=True)
+    # logger.debug(f'beginning capture instance to file: {capture._output_file}')
+    for packet in capture.sniff_continuously(packet_count=100):
+        try:
+            highest_layer = packet.highest_layer
+            if highest_layer not in ['DATA_RAW', 'TCP_RAW', 'UDP_RAW', 'JSON_RAW', 'DATA-TEXT-LINES_RAW', 'IMAGE-GIF_RAW', 'IMAGE-JFIF_RAW', 'PNG-RAW']:
+                process_packet(packet, highest_layer)
+            else:
+                skipped_packet += 1
+            currentPacket += 1
+        except Exception as e:
+            print(f'error processing packet {e}')
+            # logger.warning(f'error processing packet {e}')
+    capture.close()
+    # logger.debug(f'stopping capture instance')
+    ## Check for any orphaned 'dumpcap' processes from pyshark still running from old instance, and terminate them
+    time.sleep(1)
+    # proc_cleanup('dumpcap')
+    capture_count += 1
+
+async def default_update_loop():
+    try:
+        count = 0
+        while True:
+            await asyncio.sleep(5.0)
+            results = await endpoints.get_active_entries()
+            print(f'local db records pending update to ISE: {len(results)}')
+            if results:
+                for row in results:
+                    print(f'record to update: {row}')
+    except asyncio.CancelledError as e:
+        pass
+    print(f'shutting down loop instance')
+
 
 if __name__ == '__main__':
     ## Validate that defined ISE instance has Custom Attributes defined
@@ -204,17 +318,56 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Time taken: {end_time - start_time} seconds')
     
-    print('### LOADING PCAP ###')
-    start_time = time.time()
-    process_capture_file(capture_file, default_filter)
-    end_time = time.time()
-    print(f'Time taken: {end_time - start_time} seconds')
-    endpoints.view_all_entries()
+    # ## PCAP PARSING SECTION
+    # print('### LOADING PCAP ###')
+    # start_time = time.time()
+    # process_capture_file(capture_file, default_filter)
+    # end_time = time.time()
+    # print(f'Time taken: {end_time - start_time} seconds')
+    # endpoints.view_all_entries()
+
+    ## Setup the publishing loop
+    main_task = asyncio.ensure_future(
+        default_update_loop()
+        )
+
+    ## Setup sigint/sigterm handlers
+    def signal_handlers():
+        global capture_running
+        main_task.cancel()
+        # reregister_task.cancel()
+        capture_running = False
+    loop = asyncio.get_event_loop()
+    loop.add_signal_handler(SIGINT, signal_handlers)
+    loop.add_signal_handler(SIGTERM, signal_handlers)
+
+    ## LIVE PCAP SECTION
+    capture_running = True
+
+    try:
+        while capture_running:
+            try:
+                capture_live_packets('en0', default_bpf_filter)
+            except Exception as e:
+                print(f'error with catpure instance {e}')
+    except KeyboardInterrupt:
+        print(f'closing capture down due to keyboard interrupt')
+        capture_running = False
+        # sys.exit(0)
+    
+    try:
+        loop.run_until_complete(main_task)
+    except:
+        pass
+    print(f'### LIVE PACKET CAPTURE STOPPED ##')
 
     ## DISABLE FOR TESTING...
     # ''' 
     print('### GATHER ACTIVE ENDPOINTS')
+    start_time = time.time()
     results = endpoints.get_active_entries()
+    redis_client = connect_to_redis()
+    print(f'number of redis entries: {redis_client.dbsize()}')
 
     if results:
         endpoint_updates = []
@@ -232,42 +385,43 @@ if __name__ == '__main__':
                     "isepyProtocols": row[1],
                     "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
                     }
-
-            iseCustomAttrib = getEndpoint(row[0])
             
-            if iseCustomAttrib == "no_values":
-                update = { "customAttributes": attributes, "mac": row[0] }
-                endpoint_updates.append(update)
+            ## For every entry, check if REDIS DB has record before sending API call to ISE
+            if check_mac_redis_status(redis_client,row[0],attributes) == False:
+                iseCustomAttrib = getEndpoint(row[0])
 
-            elif iseCustomAttrib is None:
-                update = { "customAttributes": attributes, "mac": row[0] }
-                endpoint_creates.append(update)
-            else:
-                ### TODO -- Change logic to only if certainty is >= than existing certainty from ISE...
-                ### if equal, but "newData" field resolves to "false", don't update
-                ### if equal, but "newData" field resolves to "true", update
-                
-                ## Check if the existing ISE fields match the new attribute values
-                if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
-                    newData = False
-                    print(f'different values for {row[0]}')
-                    oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
-                    newCertainty = attributes['isepyCertainty'].split(',')
-                    if len(oldCertainty) != len(newCertainty):
-                        print(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
-                    # Compare element-wise
-                    for i in range(len(oldCertainty)):
-                        # Convert strings to integers
-                        value1 = int(oldCertainty[i])
-                        value2 = int(newCertainty[i])
-                        if value2 > value1:
-                            newData = True
-                    if newData == True:
-                        update = { "customAttributes": attributes, "mac": row[0] } 
-                        endpoint_updates.append((update))
+                if iseCustomAttrib == "no_values":
+                    update = { "customAttributes": attributes, "mac": row[0] }
+                    endpoint_updates.append(update)
+
+                elif iseCustomAttrib is None:
+                    update = { "customAttributes": attributes, "mac": row[0] }
+                    endpoint_creates.append(update)
+                else:
+                    ### TODO -- Change logic to only if certainty is >= than existing certainty from ISE...
+                    ### if equal, but "newData" field resolves to "false", don't update
+                    ### if equal, but "newData" field resolves to "true", update
+                    
+                    ## Check if the existing ISE fields match the new attribute values
+                    if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
+                        newData = False
+                        print(f'different values for {row[0]}')
+                        oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
+                        newCertainty = attributes['isepyCertainty'].split(',')
+                        if len(oldCertainty) != len(newCertainty):
+                            print(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+                        # Compare element-wise
+                        for i in range(len(oldCertainty)):
+                            # Convert strings to integers
+                            value1 = int(oldCertainty[i])
+                            value2 = int(newCertainty[i])
+                            if value2 > value1:
+                                newData = True
+                        if newData == True:
+                            update = { "customAttributes": attributes, "mac": row[0] } 
+                            endpoint_updates.append((update))
         
         print('### Checking for endpoint updates for ISE ###')
-        start_time = time.time()
         if len(endpoint_updates) > 0:
             print(f'### Updating {len(endpoint_updates)} endpoints in ISE ###')
             chunk_size = 500
@@ -287,3 +441,8 @@ if __name__ == '__main__':
         end_time = time.time()
         print(f'Time taken: {end_time - start_time} seconds')
         # '''
+
+    ## REDIS OUTPUT
+    print(f'number of redis entries: {redis_client.dbsize()}')
+    # print_all_endpoints(redis_client)
+    clear_redis_db(redis_client)

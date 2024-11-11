@@ -43,8 +43,8 @@ class endpointsdb:
         self.cursor.execute('SELECT * FROM endpoints WHERE mac = ?', (mac,))
         existing_record = self.cursor.fetchone()                # Grab any matching entry based on MAC
         if existing_record:
-            print(f'existing record: {existing_record}')
-            print(f'new record: {values_list}')
+            # print(f'existing record: {existing_record}')
+            # print(f'new record: {values_list}')
             update_values = {}                                  # Temp array to hold any new values
             if not existing_record[1] and values_list[1]:
                 update_values['protocol'] = values_list[1]
