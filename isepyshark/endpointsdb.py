@@ -136,6 +136,11 @@ class endpointsdb:
         entries = self.cursor.fetchall()
         return entries
 
+    async def get_active_entries_async(self):
+        self.cursor.execute('SELECT * FROM endpoints WHERE updated = 0')
+        entries = self.cursor.fetchall()
+        return entries
+
     ## Modify local DB record 'Update' status to 'True' to avoid being included in future updates until new data is available
     async def ise_endpoint_updated(self, mac):
         global ise_updates
