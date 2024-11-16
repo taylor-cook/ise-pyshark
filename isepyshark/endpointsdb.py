@@ -89,7 +89,7 @@ class endpointsdb:
                 update_values['timestamp'] = datetime.now().strftime("%H:%M:%S")
                 self.cursor.execute(f"UPDATE endpoints SET {update_query}", (*update_values.values(), values_list[0]))
                 records_updated += 1
-                print(f'record updated - {update_values}')
+                # print(f'record updated - {update_values}')
                 logger.debug(f'endpoint db record updated: {values_list[0]} - {values_list[1]} data')
                 
         else:
@@ -109,7 +109,7 @@ class endpointsdb:
                  values_list[3], values_list[4], values_list[5], values_list[6], values_list[7], values_list[8], values_list[9], values_list[10], 
                  values_list[11], values_list[12], values_list[13], values_list[14], values_list[15], values_list[16], values_list[17], values_list[18],
                  False, datetime.now().strftime("%H:%M:%S")))
-            print(f'sqldb record created - {values_list}')
+            # print(f'sqldb record created - {values_list}')
             logger.debug(f'endpoint db record created: {values_list[0]} - {values_list[1]} data')
             records_created += 1
 

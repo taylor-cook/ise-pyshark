@@ -99,6 +99,15 @@ class parser:
         if 'usb_MDL=' in txt:
             values[6] = txt.replace('usb_MDL=','')
             values[14] = 70
+            if 'Brother' in values[5] and ('MDL=MFC-' in values[6] or 'MDL=DCP-' in values[6] or 'MDL=HL-' in values[6]):
+                values[10] = 'Printer'
+                values[18] = 80
+            elif 'EPSON' in values[5] and 'MDL=ET-' in values[6]:
+                values[10] = 'Printer'
+                values[18] = 80
+            elif 'Hewlett-Packard' in values[5] and ['LaserJet'] in values[6]:
+                values[10] = 'Printer'
+                values[18] = 80
             return values
 
         ## Look through models dict, first by OUI details
@@ -405,9 +414,6 @@ class parser:
                     elif layer._all_fields['Answers'][key]['dns.resp.type'] == '16' and '_raop._tcp' not in layer._all_fields['Answers'][key]['dns.resp.name'] and 'kerberos' not in layer._all_fields['Answers'][key]['dns.resp.name']:
                         
                         value = layer._all_fields['Answers'][key]['dns.resp.name']
-                        # if 'device-info' not in value and '._companion-link._tcp.local' not in value and '._ipp' not in value and ' Mac' not in value and '._airplay' not in value and '._rdlink' not in value:
-                        if 'spotify' in value:
-                            print(f'dns.resp.name = {value}')
                         if '_amzn-alexa._tcp.local' in value:
                             if 'Amazon' in asset_values[5] and '_amzn-alexa._tcp.local' in layer._all_fields['Answers'][key]['dns.resp.name']:
                                 asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'Smart Device'
@@ -426,6 +432,8 @@ class parser:
                                 if item[0:2] == 'n=':
                                     asset_values[4] = item[2:]
                                     asset_values[12] = 80
+                                if item[0:3] == 'ad=':
+                                    asset_values = self.parse_model_and_os(asset_values, item)
                             if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item:
                                 asset_values = self.parse_model_and_os(asset_values, item)                            
                             elif "name=" in item:
