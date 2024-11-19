@@ -4,6 +4,8 @@ import pyshark
 import urllib3
 import redis
 import asyncio
+import argparse
+import netifaces
 import sys
 from signal import SIGINT, SIGTERM
 from isepyshark.parser import parser
@@ -490,6 +492,23 @@ def capture_live_packets(network_interface, bpf_filter):
     capture_count += 1
 
 if __name__ == '__main__':
+    ## Parse input from initial start
+    parser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
+    parser.add_argument('-u', '--username', required=True, help='The username')
+    parser.add_argument('-p', '--password', required=True, help='The password')
+    parser.add_argument('-a', '--url', required=True, help='The URL')
+    parser.add_argument('-i', '--interface', required=True, help='The network interface')
+    args = parser.parse_args()
+    ints = netifaces.interfaces()
+    if args.interface not in ints:
+        print(f'Invalid interface name provided: {args.interface}.')
+        print(f'Valid interface names are: {ints}')
+        sys.exit(1)
+
+    username = args.username
+    password = args.password
+    fqdn = 'https://' + args.url
+    
     ## Validate that defined ISE instance has Custom Attributes defined
     print('### CHECKING ISE ATTRIBUTES ###')
     start_time = time.time()
@@ -552,7 +571,7 @@ if __name__ == '__main__':
     try:
         while capture_running:
             try:
-                capture_live_packets('en0', default_bpf_filter)
+                capture_live_packets(args.interface, default_bpf_filter)
             except Exception as e:
                 print(f'error with catpure instance {e}')
     except KeyboardInterrupt:
