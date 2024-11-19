@@ -105,7 +105,7 @@ class parser:
             elif 'EPSON' in values[5] and 'MDL=ET-' in values[6]:
                 values[10] = 'Printer'
                 values[18] = 80
-            elif 'Hewlett-Packard' in values[5] and ['LaserJet'] in values[6]:
+            elif ('HP' in values[5] or 'Hewlett-Packard' in values[5]) and ('LaserJet' in values[6] or 'ENVY Photo' in values[6]):
                 values[10] = 'Printer'
                 values[18] = 80
             return values

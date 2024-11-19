@@ -4,6 +4,7 @@ import pyshark
 import urllib3
 import redis
 import asyncio
+import sys
 from signal import SIGINT, SIGTERM
 from isepyshark.parser import parser
 from isepyshark.endpointsdb import endpointsdb
@@ -21,14 +22,14 @@ fqdn = "https://10.0.1.90"
 headers = {'accept':'application/json','Content-Type':'application/json'}
 username = 'api-admin'
 password = 'Password123'
-capture_file = "captures/simulation.pcap"
+capture_file = "captures/simulation.pcapng"
 default_filter = '!ipv6 && (ssdp || (http && http.user_agent != "") || xml || browser || (mdns && (dns.resp.type == 1 || dns.resp.type == 16)))'
 default_bpf_filter = "(ip proto 0x2f || tcp port 80 || tcp port 8080 || udp port 1900 || udp port 138 || udp port 5060 || udp port 5353) and not ip6"
 capture_running = False
 capture_count = 0
 skipped_packet = 0
 
-# mac_filter = 'eth.addr == E0:BB:9E:7B:9F:AB'
+# mac_filter = 'eth.addr == BC:14:85:E5:CC:07'
 # if mac_filter != '':
 #     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
@@ -55,14 +56,17 @@ newVariables = {}
 
 def get_ise_attributes():
     url_suffix = "/api/v1/endpoint-custom-attribute"
-    response = requests.get(fqdn + url_suffix, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-    if response.status_code == 200:
-        return response.json()
-        # print(json.loads(response.content))
-    else:
-        print('Failed to send request.')
-        print('Status code:', response.status_code)
-        print('Response:', response.text)
+    try:
+        response = requests.get(fqdn + url_suffix, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print("Unable to gather ISE Custom Attributes.  Check provided credentials and verify required permissions")
+            sys.exit(0)
+    except requests.exceptions.RequestException as err:
+        print(f"An error occurred: {err}")
+        print(f"Unable to communicate with ISE server. Exiting program.")
+        sys.exit(0)
 
 def validate_attributes(output, vars):
     # Create a set of attribute names from the JSON output
@@ -71,7 +75,7 @@ def validate_attributes(output, vars):
     # Check for missing attributes in the output
     for variable_name, variable_type in vars.items():
         if variable_name not in output_attribute_names:
-            print(f"Alert: {variable_name} is missing from the output.")
+            print(f"ALERT: {variable_name} is missing from the configured ISE Custom Attributes.")
             create_ise_attribute(variable_name, variable_type)
     
     # Iterate through each item in the output list
@@ -88,75 +92,99 @@ def validate_attributes(output, vars):
             else:
                 print(f"Custom Attribute {attribute_name} : {attribute_type} does NOT match the expected type. Expected {variables[attribute_name]}, got {attribute_type}.")
         else:
-            print(f"{attribute_name} is not a recognized attribute.")
+            print(f"Skipping Custom Attribute '{attribute_name}' as it is not required for this program.")
 
 def create_ise_attribute(name, type):
     url = f'{fqdn}/api/v1/endpoint-custom-attribute'
     data = {"attributeName": name,"attributeType": type}
-    response = requests.post(url, headers=headers, json=data, auth=HTTPBasicAuth(username, password), verify=False)
-    if response.status_code == 200:
-        # Process the response if necessary
-        print(response.json())
-    else:
-        print('Failed to send request.')
-        print('Status code:', response.status_code)
-        print('Response:', response.text)
+    try:
+        response = requests.post(url, headers=headers, json=data, auth=HTTPBasicAuth(username, password), verify=False)
+        if response.status_code == 200 or response.status_code == 201:
+            print(response.json())
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
+        print('Unable to create required ISE Custom Attributes.  Exiting program.')
+        sys.exit(0)
 
 def get_ise_endpoint(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
-    response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-    print(f'requesting ISE data for {mac}')
-    ## If an endpoint exists...
-    if response.status_code != 404:
-        result = response.json()
-        custom_attributes = result.get('customAttributes', {})
-        if custom_attributes ==  None:
-            return "no_values"
+    try:
+        response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
+        print(f'requesting ISE data for {mac}')
+        ## If an endpoint exists...
+        if response.status_code != 404:
+            result = response.json()
+            custom_attributes = result.get('customAttributes', {})
+            if custom_attributes ==  None:
+                return "no_values"
+            else:
+                custom_attributes_dict = {}
+                for key, value in custom_attributes.items():
+                    custom_attributes_dict[key] = value
+                return custom_attributes
         else:
-            custom_attributes_dict = {}
-            for key, value in custom_attributes.items():
-                custom_attributes_dict[key] = value
-            return custom_attributes
-    else:
+            return None
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
         return None
 
 async def get_ise_endpoint_async(mac):
     url = f'{fqdn}/api/v1/endpoint/{mac}'
-    response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-    print(f'requesting ISE data for {mac}')
-    ## If an endpoint exists...
-    if response.status_code != 404:
-        result = response.json()
-        custom_attributes = result.get('customAttributes', {})
-        if custom_attributes ==  None:
-            return "no_values"
+    try:
+        response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
+        print(f'requesting ISE data for {mac}')
+        ## If an endpoint exists...
+        if response.status_code != 404:
+            result = response.json()
+            custom_attributes = result.get('customAttributes', {})
+            if custom_attributes ==  None:
+                return "no_values"
+            else:
+                custom_attributes_dict = {}
+                for key, value in custom_attributes.items():
+                    custom_attributes_dict[key] = value
+                return custom_attributes
         else:
-            custom_attributes_dict = {}
-            for key, value in custom_attributes.items():
-                custom_attributes_dict[key] = value
-            return custom_attributes
-    else:
+            return None
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
         return None
 
 def bulk_update_put(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
-    response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-    print(response.json())
+    try:
+        response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+        print(response.json())
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
+        print('WARNING: Unable to update endponits within ISE')
 
 async def bulk_update_put_async(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
-    response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-    print(response.json())
+    try:
+        response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+        print(response.json())
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
+        print('WARNING: Unable to update endponits within ISE')
 
 def bulk_update_post(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
-    response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-    print(response.json())
+    try:
+        response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+        print(response.json())
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
+        print('WARNING: Unable to update endponits within ISE')
 
 async def bulk_update_post_async(update):
     url = f'{fqdn}/api/v1/endpoint/bulk'
-    response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-    print(response.json())
+    try:
+        response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
+        print(response.json())
+    except requests.exceptions.RequestException as err:
+        print(f'An error occurred: {err}')
+        print('WARNING: Unable to update endponits within ISE')
 
 def update_ise_endpoints(endpoints_db, redis_db):
     print('### GATHER ACTIVE ENDPOINTS')
@@ -479,14 +507,14 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Time taken: {end_time - start_time} seconds')
     
-    ### PCAP PARSING SECTION
-    print('### LOADING PCAP ###')
-    start_time = time.time()
-    process_capture_file("captures/samsung_xml.pcapng", default_filter)
-    end_time = time.time()
-    print(f'Time taken: {end_time - start_time} seconds')
-    update_ise_endpoints(endpoints, redis_client)
-    endpoints.view_all_entries()
+    # ### PCAP PARSING SECTION
+    # print('### LOADING PCAP ###')
+    # start_time = time.time()
+    # process_capture_file(capture_file, default_filter)
+    # end_time = time.time()
+    # print(f'Time taken: {end_time - start_time} seconds')
+    # update_ise_endpoints(endpoints, redis_client)
+    # endpoints.view_all_entries()
 
     ### =========== LIVE CAPTURE TESTING =============== ###
     async def default_update_loop():
@@ -530,7 +558,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print(f'closing capture down due to keyboard interrupt')
         capture_running = False
-        # sys.exit(0)
+        sys.exit(0)
     try:
         loop.run_until_complete(main_task)
     except:

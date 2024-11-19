@@ -1,5 +1,5 @@
 {
-    "Amazon Technologies, Inc.":{
+    "Amazon Technologies Inc.":{
     "ad=A12GXV8XMS007S":{"name":"Fire TV (Gen1)","type":"IOT Device"},
     "ad=A2E0SNTXJVT7WK":{"name":"Fire TV (Gen2)","type":"IOT Device"},
     "ad=A2GFL5ZMWNE0PX":{"name":"Fire TV (Gen3)","type":"IOT Device"},
@@ -529,20 +529,6 @@
     "model=Xserve2,1":{"name":"Xserve (Early 2008)","type":"Workstation"},
     "model=Xserve3,1":{"name":"Xserve (Early 2009) ","type":"Workstation"}
     },
-    "Brother":{
-    "usb_MDL=HL-L3220CDW series":{"name":"Color Laser/LED Printer (19ppm)","type":"Printer"},
-    "usb_MDL=HL-L3280CDW series":{"name":"Color Laser/LED Printer (2.7-in. touchscreen 27ppm)","type":"Printer"},
-    "usb_MDL=HL-L3295CDW series":{"name":"Color Laser/LED Printer (31ppm)","type":"Printer"},
-    "usb_MDL=HL-L3270CDW series":{"name":"Color Laser/LED Printer (2.7-in. touchscreen 25ppm)","type":"Printer"},
-    "usb_MDL=HL-L3230CDW series":{"name":"Color Laser/LED Printer (2-sided 25ppm)","type":"Printer"},
-    "usb_MDL=HL-L3290CDW series":{"name":"Color Laser/LED Printer (Copy/Scan 25ppm)","type":"Printer"},
-    "usb_MDL=RHL-L3210CW series":{"name":"Color Laser/LED Printer (19ppm)","type":"Printer"},
-    "usb_MDL=RHL-L3230CDW series":{"name":"Color Laser/LED Printer (2-sided 25ppm)","type":"Printer"},
-    "usb_MDL=RHL-L3290CDW series":{"name":"Color Laser/LED Printer (Copy/Scan 25ppm)","type":"Printer"},
-    "usb_MDL=HL-L3210CW series":{"name":"Color Laser/LED Printer (19ppm)","type":"Printer"},
-    "usb_MDL=DCP-L2550DW series":{"name":"Monochrome Laser Multi-Function Printer (2-sided 36ppm)","type":"Printer"},
-    "usb_MDL=MFC-L5850DW series":{"name":"Monochrome All-in.-One Printer (2-sided 42ppm)","type":"Printer"}
-    },
     "Chengdu Meross Technology":{
     "md=MSS110":{"name":"Smart Wi-Fi Plug Mini (US/CA/JP)","type":"IOT Device"},
     "md=MSS115":{"name":"Matter Smart Plug Mini","type":"IOT Device"},
@@ -556,10 +542,6 @@
     "md=Chromecast":{"name":"Chromecast","type":"IOT Device"},
     "md=Google Home":{"name":"Google Home","type":"IOT Device"},
     "md=Google Home Mini":{"name":"Google Home Mini","type":"IOT Device"}
-    },
-    "HP":{
-    "usb_MDL=Color LaserJet Pro M478f-9f":{"name":"HP Color LaserJet Pro MFP M478f-9f","type":"Printer"},
-    "usb_MDL=ENVY Photo 7800 series":{"name":"ENVY Photo 7800 series","type":"Printer"}
     },
     "Hui Zhou Gaoshengda Technology Co":{
     "model=H801X":{"name":"32-in. 720p HD Roku TV (100012589)","type":"Smart TV"}
