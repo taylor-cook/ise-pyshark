@@ -8,8 +8,8 @@ import argparse
 import netifaces
 import sys
 from signal import SIGINT, SIGTERM
-from isepyshark.parser import parser
-from isepyshark.endpointsdb import endpointsdb
+from ise_pyshark.parser import parser
+from ise_pyshark.endpointsdb import endpointsdb
 # import pxgrid_pyshark
 import json
 # from pxgrid_pyshark import endpointsdb
@@ -493,12 +493,12 @@ def capture_live_packets(network_interface, bpf_filter):
 
 if __name__ == '__main__':
     ## Parse input from initial start
-    parser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
-    parser.add_argument('-u', '--username', required=True, help='The username')
-    parser.add_argument('-p', '--password', required=True, help='The password')
-    parser.add_argument('-a', '--url', required=True, help='The URL')
-    parser.add_argument('-i', '--interface', required=True, help='The network interface')
-    args = parser.parse_args()
+    argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
+    argparser.add_argument('-u', '--username', required=True, help='The username')
+    argparser.add_argument('-p', '--password', required=True, help='The password')
+    argparser.add_argument('-a', '--url', required=True, help='The URL')
+    argparser.add_argument('-i', '--interface', required=True, help='The network interface')
+    args = argparser.parse_args()
     ints = netifaces.interfaces()
     if args.interface not in ints:
         print(f'Invalid interface name provided: {args.interface}.')

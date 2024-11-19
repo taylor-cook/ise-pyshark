@@ -1,4 +1,4 @@
-isepyshark/__pycache__
+ise_pyshark/__pycache__
 captures/
 endpoint_database.db
 myredis.py

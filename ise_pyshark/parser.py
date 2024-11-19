@@ -11,13 +11,13 @@ apple_os_data, models_data, android_models = {}, {}, {}
 
 macoui_url = 'https://standards-oui.ieee.org/'
 ## DOCKER VERSION
-# macoui_raw_data_file = '/app/isepyshark/db/macoui.txt'
-# macoui_pipe_file = '/app/isepyshark/db/macoui.pipe'
-# macoui_database_file = '/app/isepyshark/db/macoui.db'
+# macoui_raw_data_file = '/app/ise_pyshark/db/macoui.txt'
+# macoui_pipe_file = '/app/ise_pyshark/db/macoui.pipe'
+# macoui_database_file = '/app/ise_pyshark/db/macoui.db'
 ## PYTHON VERSION
-macoui_raw_data_file = './isepyshark/db/macoui.txt'
-macoui_pipe_file = './isepyshark/db/macoui.pipe'
-macoui_database_file = './isepyshark/db/macoui.db'
+macoui_raw_data_file = './ise_pyshark/db/macoui.txt'
+macoui_pipe_file = './ise_pyshark/db/macoui.pipe'
+macoui_database_file = './ise_pyshark/db/macoui.db'
 oui_manager = ouidb(macoui_url, macoui_raw_data_file, macoui_pipe_file, macoui_database_file)
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 class parser:
     def __init__(self):
         ## DOCKER VERSION
-        # self.apple_os_json = '/app/isepyshark/db/apple-os.json'
-        # self.models_json = '/app/isepyshark/db/models.json'
-        # self.android_json = '/app/isepyshark/db/androids.json'
+        # self.apple_os_json = '/app/ise_pyshark/db/apple-os.json'
+        # self.models_json = '/app/ise_pyshark/db/models.json'
+        # self.android_json = '/app/ise_pyshark/db/androids.json'
         ## PYTHON VERSION
-        self.apple_os_json = './isepyshark/db/apple-os.json'
-        self.models_json = './isepyshark/db/models.json'
-        self.android_json = './isepyshark/db/androids.json'
+        self.apple_os_json = './ise_pyshark/db/apple-os.json'
+        self.models_json = './ise_pyshark/db/models.json'
+        self.android_json = './ise_pyshark/db/androids.json'
         self._initialize_database()
     
     def _initialize_database(self):
