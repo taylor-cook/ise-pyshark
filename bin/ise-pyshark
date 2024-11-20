@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import time
 import requests
 import pyshark
@@ -538,15 +539,9 @@ if __name__ == '__main__':
     ### =========== LIVE CAPTURE TESTING =============== ###
     async def default_update_loop():
         try:
-            count = 0
             while True:
                 await asyncio.sleep(5.0)
                 await update_ise_endpoints_async(endpoints, redis_client)
-                # results = await endpoints.get_active_entries_async()
-                # print(f'local db records pending update to ISE: {len(results)}')
-                # if results:
-                #     for row in results:
-                #         print(f'record to update: {row}')
         except asyncio.CancelledError as e:
             pass
         print(f'shutting down loop instance')
