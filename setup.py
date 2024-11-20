@@ -34,6 +34,7 @@ setup (
     packages=['ise_pyshark'],
     scripts=[
         'bin/ise-pyshark',
+        'bin/ise-pyshark-file',
     ],
     author=__author__,
     author_email=__author_email__,
@@ -43,13 +44,13 @@ setup (
     install_requires=[
         'netifaces>=0.11.0',
         'pyshark>=0.6',
-        'redis==5.2.0',
+        'redis>=5.2.0',
         'requests>=2.31.0',
-        'urllib3==2.2.2',
+        'urllib3>=2.2.2',
         'user-agents>=2.2.0',
     ],
     include_package_data=True,
-    platforms=["Posix; OS X; Windows"],
+    platforms=['OS X','Linux','Windows'],
     keywords=['ISE', 'API', 'IOT', 'profiling'],
     python_requires='>=3.8',
     classifiers=[
