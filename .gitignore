@@ -1,4 +1,6 @@
 ise_pyshark/__pycache__
+ise_pyshark.egg-info/
 captures/
+build/
+dist/
 endpoint_database.db
-myredis.py

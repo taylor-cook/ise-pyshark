@@ -29,9 +29,9 @@ class parser:
         # self.models_json = '/app/ise_pyshark/db/models.json'
         # self.android_json = '/app/ise_pyshark/db/androids.json'
         ## PYTHON VERSION
-        self.apple_os_json = './ise_pyshark/db/apple-os.json'
-        self.models_json = './ise_pyshark/db/models.json'
-        self.android_json = './ise_pyshark/db/androids.json'
+        self.apple_os_json = pkg_resources.resource_filename('ise_pyshark','db/apple-os.json')
+        self.models_json = pkg_resources.resource_filename('ise_pyshark','db/models.json')
+        self.android_json = pkg_resources.resource_filename('ise_pyshark','db/androids.json')
         self._initialize_database()
     
     def _initialize_database(self):

@@ -10,14 +10,10 @@ logger = logging.getLogger(__name__)
 class ouidb:
     def __init__(self, url, raw_data_file, pipe_file, database_file):
         self.url = url
-        # self.raw_data_file = pkg_resources.resource_filename('pxgrid_pyshark', raw_data_file)
-        # self.pipe_file = pkg_resources.resource_filename('pxgrid_pyshark', pipe_file)
-        # self.database_file = pkg_resources.resource_filename('pxgrid_pyshark', database_file)
-        self.raw_data_file = raw_data_file
-        self.pipe_file = pipe_file
-        self.database_file = database_file
-        ### DON'T REDOWNLOAD OUI DURING TESTING
-        #self._initialize_database()
+        self.raw_data_file = pkg_resources.resource_filename('pxgrid_pyshark', raw_data_file)
+        self.pipe_file = pkg_resources.resource_filename('pxgrid_pyshark', pipe_file)
+        self.database_file = pkg_resources.resource_filename('pxgrid_pyshark', database_file)
+        self._initialize_database()
 
     def _initialize_database(self):
         self.download_macoui_data()
