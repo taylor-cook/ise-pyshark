@@ -429,7 +429,7 @@ if __name__ == '__main__':
         while capture_running:
             try:
                 # capture_live_packets(args.interface, default_bpf_filter)
-                capture_live_packets('en0', default_bpf_filter)
+                capture_live_packets(args.interface, default_bpf_filter)
             except Exception as e:
                 logger.warning(f'error with catpure instance {e}')
     except KeyboardInterrupt:

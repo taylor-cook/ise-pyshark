@@ -322,9 +322,9 @@ if __name__ == '__main__':
     argparser.add_argument('-f', '--file', required=True, help='The PCAP(NG) file to analyze')
     args = argparser.parse_args()
     ints = netifaces.interfaces()
-    if args.interface not in ints:
-        print(f'Invalid interface name provided: {args.interface}.')
-        print(f'Valid interface names are: {ints}')
+
+    if Path(args.file).exists() == False:
+        print(f'Invalid capture file provided: {args.file}')
         sys.exit(1)
 
     username = args.username
@@ -351,7 +351,7 @@ if __name__ == '__main__':
     # ### PCAP PARSING SECTION
     print('### LOADING PCAP ###')
     start_time = time.time()
-    process_capture_file(capture_file, default_filter)
+    process_capture_file(args.file, default_filter)
     end_time = time.time()
     print(f'Time taken: {round(end_time - start_time,4)}sec')
     update_ise_endpoints(endpoints, redis_client)
