@@ -119,14 +119,10 @@ class endpointsdb:
     def view_all_entries(self):
         self.cursor.execute('SELECT * FROM endpoints')
         entries = self.cursor.fetchall()
-
+        
         print("All Entries in the 'endpoints' table:")
-        # for entry in entries:
-        #     print(entry)
-
         column_names = [description[0] for description in self.cursor.description]
         print('|'.join(column_names))
-
         for row in entries:
             print('|'.join(map(str,row)))
     
@@ -139,6 +135,7 @@ class endpointsdb:
     async def get_active_entries_async(self):
         self.cursor.execute('SELECT * FROM endpoints WHERE updated = 0')
         entries = self.cursor.fetchall()
+        logger.debug(f'number of sqlite3 entries: {len(entries)}')
         return entries
 
     ## Modify local DB record 'Update' status to 'True' to avoid being included in future updates until new data is available

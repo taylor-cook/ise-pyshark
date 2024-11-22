@@ -1,0 +1,3 @@
+include versioneer.py
+include ise_pyshark/_version.py
+include ise_pyshark/db/*

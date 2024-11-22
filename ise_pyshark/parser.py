@@ -10,25 +10,15 @@ from .ouidb import *
 apple_os_data, models_data, android_models = {}, {}, {}
 
 macoui_url = 'https://standards-oui.ieee.org/'
-## DOCKER VERSION
-# macoui_raw_data_file = '/app/ise_pyshark/db/macoui.txt'
-# macoui_pipe_file = '/app/ise_pyshark/db/macoui.pipe'
-# macoui_database_file = '/app/ise_pyshark/db/macoui.db'
-## PYTHON VERSION
-macoui_raw_data_file = './ise_pyshark/db/macoui.txt'
-macoui_pipe_file = './ise_pyshark/db/macoui.pipe'
-macoui_database_file = './ise_pyshark/db/macoui.db'
+macoui_raw_data_file = 'db/macoui.txt'
+macoui_pipe_file = 'db/macoui.pipe'
+macoui_database_file = 'db/macoui.db'
 oui_manager = ouidb(macoui_url, macoui_raw_data_file, macoui_pipe_file, macoui_database_file)
 
 logger = logging.getLogger(__name__)
 
 class parser:
     def __init__(self):
-        ## DOCKER VERSION
-        # self.apple_os_json = '/app/ise_pyshark/db/apple-os.json'
-        # self.models_json = '/app/ise_pyshark/db/models.json'
-        # self.android_json = '/app/ise_pyshark/db/androids.json'
-        ## PYTHON VERSION
         self.apple_os_json = pkg_resources.resource_filename('ise_pyshark','db/apple-os.json')
         self.models_json = pkg_resources.resource_filename('ise_pyshark','db/models.json')
         self.android_json = pkg_resources.resource_filename('ise_pyshark','db/androids.json')
@@ -127,7 +117,7 @@ class parser:
         ## If model data doesn't match any record, record model data and use lower certainty
         if model_match is not True:
             values[16] = 30
-            # logger.debug(f'No model found: {values[0]}: {values[5]} - {txt}')
+            logger.debug(f'No model found: {values[0]}: {values[5]} - {txt}')
         return values
 
     def parse_mac_ip(self, packet):
@@ -317,17 +307,6 @@ class parser:
                     asset_values[9] = serialNumber.text
                     asset_values[17] = 80
                 # print(asset_values)
-
-                # asset_values[4] = root.find(".//{urn:schemas-upnp-org:device-1-0}friendlyName").text
-                # asset_values[12] = 80
-                # asset_values[5] = root.find(".//{urn:schemas-upnp-org:device-1-0}manufacturer").text
-                # asset_values[13] = 80
-                # asset_values[6] = root.find(".//{urn:schemas-upnp-org:device-1-0}modelName").text
-                # asset_values[14] = 80
-                # asset_values[8] = root.find(".//{urn:schemas-upnp-org:device-1-0}modelNumber").text
-                # asset_values[16] = 80
-                # asset_values[9] = root.find(".//{urn:schemas-upnp-org:device-1-0}serialNumber").text
-                # asset_values[17] = 80
             except Exception as e:
                 logger.debug(f'Error processing {asset_values[1]} packet: {e}')
                 pass
