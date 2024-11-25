@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import time
 import requests
 import pyshark
@@ -183,12 +182,27 @@ def update_ise_endpoints(endpoints_db, redis_db):
                         logger.debug(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
                     
                     if attributes['isepyCertainty'] == iseCustomAttrib['isepyCertainty']:
-                        i = 0
-                        for key in attributes:
-                            if attributes.get(key) != iseCustomAttrib.get(key):
-                                logger.debug(f'mismatch between local = {attributes.get(key)} certainty {int(newCertainty[i])} and remote = {iseCustomAttrib.get(key)} certainty {int(oldCertainty[i])} ')
-                                newData = True
-                            i += 1
+                        if attributes['isepyDeviceID'] != iseCustomAttrib['isepyDeviceID']:
+                            logger.debug(f'endpoint DeviceID mismatch - local: {attributes['isepyDeviceID']} certainty {int(newCertainty[0])} and remote = {iseCustomAttrib['isepyDeviceID']} certainty {int(oldCertainty[0])}')
+                            newData = True
+                        if attributes['isepyHostname'] != iseCustomAttrib['isepyHostname']:
+                            newData = True
+                        if attributes['isepyVendor'] != iseCustomAttrib['isepyVendor']:
+                            newData = True
+                        if attributes['isepyModel'] != iseCustomAttrib['isepyModel']:
+                            newData = True
+                        if attributes['isepyOS'] != iseCustomAttrib['isepyOS']:
+                            newData = True
+                        if attributes['isepyType'] != iseCustomAttrib['isepyType']:
+                            newData = True
+                        if attributes['isepySerial'] != iseCustomAttrib['isepySerial']:
+                            newData = True
+                        if attributes['isepyProtocols'] != iseCustomAttrib['isepyProtocols']:
+                            if str(attributes['isepyProtocols']) not in str(iseCustomAttrib['isepyProtocols']):
+                                attributes['isepyProtocols'] = str(iseCustomAttrib['isepyProtocols'],', ',attributes['isepyProtocols'])
+                            newData = True
+                        if attributes['isepyIP'] != iseCustomAttrib['isepyIP']:
+                            newData = True
 
                     ## Check if the existing ISE fields match the new attribute values
                     if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
@@ -323,23 +337,29 @@ if __name__ == '__main__':
         s_logger.addHandler(handler)
         s_logger.setLevel(logging.DEBUG)
 
-    ## Parse input from initial start
-    argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
-    argparser.add_argument('-u', '--username', required=True, help='ISE API username')
-    argparser.add_argument('-p', '--password', required=True, help='ISE API password')
-    argparser.add_argument('-a', '--url', required=True, help='ISE URL')
-    argparser.add_argument('-f', '--file', required=True, help='The PCAP(NG) file to analyze')
-    args = argparser.parse_args()
-    ints = netifaces.interfaces()
+    # ## Parse input from initial start
+    # argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
+    # argparser.add_argument('-u', '--username', required=True, help='ISE API username')
+    # argparser.add_argument('-p', '--password', required=True, help='ISE API password')
+    # argparser.add_argument('-a', '--url', required=True, help='ISE URL')
+    # argparser.add_argument('-f', '--file', required=True, help='The PCAP(NG) file to analyze')
+    # args = argparser.parse_args()
+    # ints = netifaces.interfaces()
 
-    if Path(args.file).exists() == False:
-        logger.warning(f'Invalid capture file provided: {args.file}')
-        sys.exit(1)
+    # if Path(args.file).exists() == False:
+    #     logger.warning(f'Invalid capture file provided: {args.file}')
+    #     sys.exit(1)
 
-    username = args.username
-    password = args.password
-    fqdn = 'https://' + args.url
-    filename = args.file
+    # username = args.username
+    # password = args.password
+    # fqdn = 'https://' + args.url
+    # filename = args.file
+
+    username = 'api-admin'
+    password = 'Password123'
+    fqdn = 'https://10.0.1.90'
+    filename = 'captures/HOMELAB.pcapng'
+
     
     ## Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')
@@ -366,7 +386,6 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f'Time taken: {round(end_time - start_time,4)}sec')
     update_ise_endpoints(endpoints, redis_client)
-    endpoints.view_all_entries()
 
     ## REDIS OUTPUT
     endpoints.view_all_entries()

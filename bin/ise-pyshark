@@ -11,6 +11,7 @@ import sys
 import os
 import psutil
 import logging
+import concurrent
 from signal import SIGINT, SIGTERM
 from pathlib import Path
 from ise_pyshark import parser
@@ -70,7 +71,7 @@ def validate_attributes(output, vars):
     # Check for missing attributes in the output
     for variable_name, variable_type in vars.items():
         if variable_name not in output_attribute_names:
-            logger.debug(f"ALERT: {variable_name} is missing from the configured ISE Custom Attributes.")
+            logger.warning(f"{variable_name} is missing from the configured ISE Custom Attributes.")
             create_ise_attribute(variable_name, variable_type)
     
     # Iterate through each item in the output list
@@ -141,90 +142,98 @@ async def bulk_update_post_async(update):
     except requests.exceptions.RequestException as err:
         logger.warning(f'unable to update endponits within ISE - {err}')
 
+## Check if the sql db has any updates and compare against redis cache
 async def update_ise_endpoints_async(endpoints_db, redis_db):
-    logger.debug(f'gather active endpoints - Start')
-    start_time = time.time()
-    results = await endpoints_db.get_active_entries_async()
-    logger.debug(f'number of redis entries: {redis_db.dbsize()}')
-    if results:
-        endpoint_updates = []
-        endpoint_creates = []
-        for row in results:
-            attributes = {
-                    "isepyDeviceID": row[8],
-                    "isepyHostname": row[4].replace("’","'"),
-                    "isepyVendor": row[5],
-                    "isepyModel": row[6],
-                    "isepyOS": row[7],
-                    "isepyType": row[10],
-                    "isepySerial": row[9],
-                    "isepyProtocols": row[1],
-                    "isepyIP": row[2],
-                    "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
-                    }
-            
-            ## For every entry, check if Redis DB has record before sending API call to ISE
-            status = await check_mac_redis_status_async(redis_db,row[0],attributes)
-            if status == False:
-                iseCustomAttrib = await get_ise_endpoint_async(row[0])
-                if iseCustomAttrib == "no_values":
-                    update = { "customAttributes": attributes, "mac": row[0] }
-                    endpoint_updates.append(update)
-                elif iseCustomAttrib is None:
-                    update = { "customAttributes": attributes, "mac": row[0] }
-                    endpoint_creates.append(update)
-                else:                  
-                    ## If certainty score is weighted the same, check individual values for update
-                    newData = False
-                    oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
-                    newCertainty = attributes['isepyCertainty'].split(',')
-                    if len(oldCertainty) != len(newCertainty):
-                        logger.debug(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+    try:
+        while True:
+            logger.debug(f'gather active endpoints - Start')
+            start_time = time.time()
+            results = await endpoints_db.get_active_entries_async()
+            logger.debug(f'number of redis entries: {redis_db.dbsize()}')
+            if results:
+                endpoint_updates = []
+                endpoint_creates = []
+                for row in results:
+                    attributes = {
+                            "isepyDeviceID": row[8],
+                            "isepyHostname": row[4].replace("’","'"),
+                            "isepyVendor": row[5],
+                            "isepyModel": row[6],
+                            "isepyOS": row[7],
+                            "isepyType": row[10],
+                            "isepySerial": row[9],
+                            "isepyProtocols": row[1],
+                            "isepyIP": row[2],
+                            "isepyCertainty" : str(row[11])+","+str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
+                            }
                     
-                    if attributes['isepyCertainty'] == iseCustomAttrib['isepyCertainty']:
-                        i = 0
-                        for key in attributes:
-                            if attributes.get(key) != iseCustomAttrib.get(key):
-                                logger.debug(f'mismatch between local = {attributes.get(key)} certainty {int(newCertainty[i])} and remote = {iseCustomAttrib.get(key)} certainty {int(oldCertainty[i])} ')
-                                newData = True
-                            i += 1
+                    ## For every entry, check if Redis DB has record before sending API call to ISE
+                    status = await check_mac_redis_status_async(redis_db,row[0],attributes)
+                    if status == False:
+                        iseCustomAttrib = await get_ise_endpoint_async(row[0])
+                        if iseCustomAttrib == "no_values":
+                            update = { "customAttributes": attributes, "mac": row[0] }
+                            endpoint_updates.append(update)
+                        elif iseCustomAttrib is None:
+                            update = { "customAttributes": attributes, "mac": row[0] }
+                            endpoint_creates.append(update)
+                        else:                  
+                            ## If certainty score is weighted the same, check individual values for update
+                            newData = False
+                            oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
+                            newCertainty = attributes['isepyCertainty'].split(',')
+                            if len(oldCertainty) != len(newCertainty):
+                                logger.debug(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+                            
+                            if attributes['isepyCertainty'] == iseCustomAttrib['isepyCertainty']:
+                                i = 0
+                                for key in attributes:
+                                    if attributes.get(key) != iseCustomAttrib.get(key):
+                                        logger.debug(f'mismatch between local = {attributes.get(key)} certainty {int(newCertainty[i])} and remote = {iseCustomAttrib.get(key)} certainty {int(oldCertainty[i])} ')
+                                        newData = True
+                                    i += 1
 
-                    ## Check if the existing ISE fields match the new attribute values
-                    if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
-                        logger.debug(f'different values for {row[0]}')
-                        oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
-                        newCertainty = attributes['isepyCertainty'].split(',')
+                            ## Check if the existing ISE fields match the new attribute values
+                            if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
+                                logger.debug(f'different values for {row[0]}')
+                                oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
+                                newCertainty = attributes['isepyCertainty'].split(',')
 
-                        # Compare element-wise
-                        for i in range(len(oldCertainty)):
-                            # Convert strings to integers
-                            value1 = int(oldCertainty[i])
-                            value2 = int(newCertainty[i])
-                            if value2 > value1:
-                                newData = True
-                    if newData == True:
-                        update = { "customAttributes": attributes, "mac": row[0] } 
-                        endpoint_updates.append((update))
-        
-        logger.debug(f'check for endpoint updates to ISE - Start')
-        if len(endpoint_updates) > 0:
-            logger.debug(f'creating, updating {len(endpoint_updates)} endpoints in ISE - Start')
-            chunk_size = 500
-            for i in range(0, len(endpoint_updates),chunk_size):
-                chunk = endpoint_updates[i:i + chunk_size]
-                result = await bulk_update_put_async(chunk)
-            logger.debug(f'updating {len(endpoint_updates)} endpoints in ISE - Completed')
-        if len(endpoint_creates) > 0:
-            logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Start')
-            chunk_size = 500
-            for i in range(0, len(endpoint_creates),chunk_size):
-                chunk = endpoint_creates[i:i + chunk_size]
-                result = await bulk_update_post_async(chunk)
-            logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
-        if (len(endpoint_creates) + len(endpoint_updates)) == 0:
-            logger.debug(f'no endpoints created or updated in ISE')
-        end_time = time.time()
-        logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
+                                # Compare element-wise
+                                for i in range(len(oldCertainty)):
+                                    # Convert strings to integers
+                                    value1 = int(oldCertainty[i])
+                                    value2 = int(newCertainty[i])
+                                    if value2 > value1:
+                                        newData = True
+                            if newData == True:
+                                update = { "customAttributes": attributes, "mac": row[0] } 
+                                endpoint_updates.append((update))
+                
+                logger.debug(f'check for endpoint updates to ISE - Start')
+                if len(endpoint_updates) > 0:
+                    logger.debug(f'creating, updating {len(endpoint_updates)} endpoints in ISE - Start')
+                    chunk_size = 500
+                    for i in range(0, len(endpoint_updates),chunk_size):
+                        chunk = endpoint_updates[i:i + chunk_size]
+                        result = await bulk_update_put_async(chunk)
+                    logger.debug(f'updating {len(endpoint_updates)} endpoints in ISE - Completed')
+                if len(endpoint_creates) > 0:
+                    logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Start')
+                    chunk_size = 500
+                    for i in range(0, len(endpoint_creates),chunk_size):
+                        chunk = endpoint_creates[i:i + chunk_size]
+                        result = await bulk_update_post_async(chunk)
+                    logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
+                if (len(endpoint_creates) + len(endpoint_updates)) == 0:
+                    logger.debug(f'no endpoints created or updated in ISE')
+                end_time = time.time()
+                logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
+    except asyncio.CancelledError:
+        logging.warning('routine check task cancelled')
+        raise
+    except Exception as e:
+        logging.warning(f'an error occured during routine check: {e}')
 
 ### REDIS SECTION
 def connect_to_redis():
@@ -242,6 +251,7 @@ async def check_mac_redis_status_async(redis_db, mac_address, values):
         # Compare existing values with new values
         if existing_values_decoded != values:
             logger.debug(f"redis MAC address {mac_address} exists and has different values")
+            logger.debug(f'{mac_address} existing: {existing_values_decoded} - new values: {values}')
             return False
         else:
             # logger.debug(f"redis MAC address {mac_address} exists and already has the same values")
@@ -349,9 +359,36 @@ def capture_live_packets(network_interface, bpf_filter):
     logger.debug(f'stopping capture instance')
     ## Check for any orphaned 'dumpcap' processes from pyshark still running from old instance, and terminate them
     time.sleep(1)
-    # proc_cleanup('dumpcap')
+    proc_cleanup('dumpcap')
     capture_count += 1
 
+### VERSION 2 LOOP FUNCTIONS
+# Function to run packet_capture in a separate thread
+def run_packet_capture():
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(capture_live_packets)
+        future.result()
+
+# Main function to handle both tasks
+async def main(interface, executor, endpoints_value, redis_value):
+    loop = asyncio.get_running_loop()
+
+    # Run the packet capture in a separate thread using the shared executor
+    packet_capture_thread = loop.run_in_executor(executor, capture_live_packets(interface, default_bpf_filter))
+
+    # Schedule the asynchronous routine check
+    routine_check_task = asyncio.create_task(update_ise_endpoints_async(endpoints_value, redis_value))
+
+    # Wait for both tasks, handle cancellation gracefully
+    await asyncio.gather(packet_capture_thread, routine_check_task, return_exceptions=True)
+
+def shutdown(loop, executor):
+    logging.info("Received exit signal, shutting down...")
+    for task in asyncio.all_tasks(loop):
+        task.cancel()
+    loop.stop()
+    executor.shutdown(wait=False)
+    
 if __name__ == '__main__':
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
@@ -399,49 +436,66 @@ if __name__ == '__main__':
     end_time = time.time()
     logger.warning(f'SQLDB and Redis DB creation - Completed: {round(end_time - start_time,4)}sec')
 
-    async def default_update_loop():
-        try:
-            while True:
-                await asyncio.sleep(5.0)
-                await update_ise_endpoints_async(endpoints, redis_client)
-        except asyncio.CancelledError as e:
-            pass
-        logger.debug(f'shutting down loop instance')
-
-    ## Setup the publishing loop
-    main_task = asyncio.ensure_future(
-        default_update_loop()
-        )
-
-    ## Setup sigint/sigterm handlers
-    def signal_handlers():
-        global capture_running
-        main_task.cancel()
-        # reregister_task.cancel()
-        capture_running = False
+    ## VERSION 2 OF LOOP
     loop = asyncio.get_event_loop()
-    loop.add_signal_handler(SIGINT, signal_handlers)
-    loop.add_signal_handler(SIGTERM, signal_handlers)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-    ## LIVE PCAP SECTION
-    capture_running = True
+    # Handle keyboard interrupt
+    for sig in (SIGINT, SIGTERM):
+        loop.add_signal_handler(sig, lambda: shutdown(loop, executor))
     try:
-        while capture_running:
-            try:
-                # capture_live_packets(args.interface, default_bpf_filter)
-                capture_live_packets(args.interface, default_bpf_filter)
-            except Exception as e:
-                logger.warning(f'error with catpure instance {e}')
-    except KeyboardInterrupt:
-        logger.warning(f'closing capture down due to keyboard interrupt')
-        capture_running = False
-        sys.exit(0)
-    try:
-        loop.run_until_complete(main_task)
-    except:
+        loop.run_until_complete(main(args.interface, executor, endpoints, redis_client))
+    except asyncio.CancelledError:
         pass
-    logger.warning(f'### LIVE PACKET CAPTURE STOPPED ###')
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+    
+    # ### VERSION 1 OF LOOP
+    # async def default_update_loop():
+    #     try:
+    #         while True:
+    #             await asyncio.sleep(5.0)
+    #             await update_ise_endpoints_async(endpoints, redis_client)
+    #     except asyncio.CancelledError as e:
+    #         pass
+    #     logger.debug(f'shutting down loop instance')
+
+    # ## Setup the publishing loop
+    # main_task = asyncio.ensure_future(
+    #     default_update_loop()
+    #     )
+
+    # ## Setup sigint/sigterm handlers
+    # def signal_handlers():
+    #     global capture_running
+    #     main_task.cancel()
+    #     # reregister_task.cancel()
+    #     capture_running = False
+    # loop = asyncio.get_event_loop()
+    # loop.add_signal_handler(SIGINT, signal_handlers)
+    # loop.add_signal_handler(SIGTERM, signal_handlers)
+
+    # ## LIVE PCAP SECTION
+    # capture_running = True
+    # try:
+    #     while capture_running:
+    #         try:
+    #             # capture_live_packets(args.interface, default_bpf_filter)
+    #             capture_live_packets(args.interface, default_bpf_filter)
+    #         except Exception as e:
+    #             logger.warning(f'error with catpure instance {e}')
+    # except KeyboardInterrupt:
+    #     logger.warning(f'closing capture down due to keyboard interrupt')
+    #     capture_running = False
+    #     sys.exit(0)
+    # try:
+    #     loop.run_until_complete(main_task)
+    # except:
+    #     pass
+    # logger.warning(f'### LIVE PACKET CAPTURE STOPPED ###')
 
     ## REDIS OUTPUT
+    endpoints.view_all_entries()
     logger.debug(f'number of redis entries: {redis_client.dbsize()}')
     clear_redis_db(redis_client)
