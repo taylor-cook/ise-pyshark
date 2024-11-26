@@ -10,6 +10,7 @@ import sys
 import os
 import psutil
 import logging
+from datetime import datetime
 from signal import SIGINT, SIGTERM
 from pathlib import Path
 from ise_pyshark import parser
@@ -111,7 +112,7 @@ async def get_ise_endpoint_async(mac):
         start_get = time.time()
         response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
         end_get = time.time()
-        logger.debug(f'requesting ISE data for {mac} - ISE response time: {round(end_get - start_get,4)}sec')
+        logger.debug(f'API call to ISE for {mac} - ISE response time: {round(end_get - start_get,4)}sec')
         ## If an endpoint exists...
         if response.status_code != 404:
             result = response.json()
@@ -119,6 +120,7 @@ async def get_ise_endpoint_async(mac):
             if custom_attributes ==  None:
                 return "no_values"
             else:
+                print(f'API response for {mac}: {custom_attributes}')
                 custom_attributes_dict = {}
                 for key, value in custom_attributes.items():
                     custom_attributes_dict[key] = value
@@ -145,14 +147,68 @@ async def bulk_update_post_async(update):
     except requests.exceptions.RequestException as err:
         logger.warning(f'unable to update endponits within ISE - {err}')
 
-## Check if the sql db has any updates and compare against redis cache
-async def update_ise_endpoints_async(endpoints_db, redis_db):
+### REDIS SECTION
+def connect_to_redis():
+    # Connect to Redis server
+    r = redis.Redis(host='localhost', port=6379, db=0)
+    return r
+
+async def check_redis_remote_cache_async(redis_db, mac_address, values):
+    existing_values = redis_db.hgetall(f"endpoint:{mac_address}")
+    
+    # Define the fields to check
+    fields = [
+        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
+        'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
+        'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
+        'serial_weight', 'device_type_weight'
+    ]
+
+    # Check if MAC address exists in the database
+    if existing_values:
+        # Decode the existing values from bytes to strings
+        existing_values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_values.items()}
+
+        # Filter both existing and new values to only include the specified fields
+        existing_filtered = {field: existing_values_decoded.get(field, '') for field in fields}
+        new_filtered = {field: values.get(field, '') for field in fields}
+
+        # Compare the filtered existing values with new values
+        if existing_filtered != new_filtered:
+            logger.debug(f"redis remote cache MAC address {mac_address} exists and has different values")
+            logger.debug(f'{mac_address} existing: {existing_filtered} - new values: {new_filtered}')
+            return False
+        else:
+            logger.debug(f"redis MAC address {mac_address} exists and already has the same values")
+            return True
+    else:
+        logger.debug(f"no entry exists in redis remote cache for MAC address {mac_address}")
+        return False
+
+def print_all_endpoints(redis_db):
+    # Retrieve and print all MAC addresses and their values in the database
+    keys = redis_db.keys('*')  # Get all keys in the database
+    logger.debug('print all endpoints in Redis DB')
+    for key in keys:
+        key_str = key.decode('utf-8')
+        if redis_db.type(key) == b'hash':  # Ensure the key is a hash
+            values = redis_db.hgetall(key_str)
+            values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in values.items()}
+            logger.debug(f"MAC Address: {key_str}, Values: {values_decoded}")
+
+def clear_redis_db(redis_db):
+    # Clear all entries in the Redis database
+    redis_db.flushdb()
+    logger.debug('clearing of Redis DB - Complete')
+
+### REDIS SECTION v2
+async def update_ise_endpoints_async2(local_redis, remote_redis):
     try:
         logger.debug(f'gather active endpoints - Start')
         start_time = time.time()
-        ## Gather a copy of all of the sqldb entries that have new information
-        results = await endpoints_db.get_active_entries_async()
-        logger.debug(f'number of redis entries: {redis_db.dbsize()}')
+        ## Gather a copy of all of the local_redis entries that have new information
+        results = await updated_local_entries_async(local_redis)
+        logger.debug(f'number of local || remote redis entries: {local_redis.dbsize()} || {remote_redis.dbsize()}')
         if results:
             endpoint_updates = []
             endpoint_creates = []
@@ -160,29 +216,30 @@ async def update_ise_endpoints_async(endpoints_db, redis_db):
                 ## TODO - remove references to id, id_weight in endpointsdb
                 ## Does not include row[3] for "id", nor row[11] for "id_weight"
                 attributes = {
-                        "isepyHostname": row[4].replace("’","'"),
-                        "isepyVendor": row[5],
-                        "isepyModel": row[6],
-                        "isepyOS": row[7],
-                        "isepyDeviceID": row[8],
-                        "isepySerial": row[9],
-                        "isepyType": row[10],
-                        "isepyProtocols": row[1],
-                        "isepyIP": row[2],
-                        "isepyCertainty" : str(row[12])+","+str(row[13])+","+str(row[14])+","+str(row[15])+","+str(row[16])+","+str(row[17])+","+str(row[18])
+                        "isepyHostname": row['name'].replace("’","'"),
+                        "isepyVendor": row['vendor'],
+                        "isepyModel": row['hw'],
+                        "isepyOS": row['sw'],
+                        "isepyDeviceID": row['productID'],
+                        "isepySerial": row['serial'],
+                        "isepyType": row['device_type'],
+                        "isepyProtocols": row['protocol'],
+                        "isepyIP": row['ip'],
+                        "isepyCertainty" : str(row['name_weight'])+","+str(row['vendor_weight'])+","+str(row['hw_weight'])+","+str(row['sw_weight'])+","+str(row['productID_weight'])+","+str(row['serial_weight'])+","+str(row['device_type_weight'])
                         }
                 
-                ## For every entry, check if Redis DB has record before sending API call to ISE
-                status = await check_mac_redis_status_async(redis_db,row[0],attributes)
+                ## For every entry, check if remote_redis DB has record before sending API call to ISE
+                status = await check_redis_remote_cache_async(remote_redis,row['mac'],attributes)
+                ## If the value does not exist in remote redis cache, check returned API information against captured values
                 if status == False:
-                    iseCustomAttrib = await get_ise_endpoint_async(row[0])
+                    iseCustomAttrib = await get_ise_endpoint_async(row['mac'])
                     if iseCustomAttrib == "no_values":
                         ## If endpoint exists, but custom attributes not populated, add to update queue
-                        update = { "customAttributes": attributes, "mac": row[0] }
+                        update = { "customAttributes": attributes, "mac": row['mac'] }
                         endpoint_updates.append(update)
                     elif iseCustomAttrib is None:
                         ## If endpoint does not exist, add to create queue
-                        update = { "customAttributes": attributes, "mac": row[0] }
+                        update = { "customAttributes": attributes, "mac": row['mac'] }
                         endpoint_creates.append(update)
                     else:                  
                         ## If endpoint already created and has isepy CustomAttributes populated
@@ -190,10 +247,11 @@ async def update_ise_endpoints_async(endpoints_db, redis_db):
                         oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
                         newCertainty = attributes['isepyCertainty'].split(',')
                         if len(oldCertainty) != len(newCertainty):
-                            logger.debug(f"Certainty values are of different lengths for {row[0]}. Cannot compare.")
+                            logger.debug(f"Certainty values are of different lengths for {row['mac']}. Cannot compare.")
                         
                         ## If certainty score is weighted the same, check individual values for update
                         if attributes['isepyCertainty'] == iseCustomAttrib['isepyCertainty']:
+                            print(f"mac: {row['mac']} - certainty values are the same - checking individual values")
                             ## Iterate through data fields and check against ISE current values
                             for key in attributes:
                                 ## If checking the protocols observed field...
@@ -207,16 +265,14 @@ async def update_ise_endpoints_async(endpoints_db, redis_db):
                                         new_data = True
                                 ## For other fields, if newer data different, but certainty is same, update endpoint
                                 elif attributes[key] != iseCustomAttrib[key]:
+                                    logger.debug(f"mac: {row['mac']} new value for {key} - old: {iseCustomAttrib[key]} | new: {attributes[key]}")
                                     new_data = True
 
                         ## Check if the existing ISE fields match the new attribute values
                         if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
-                            logger.debug(f'different values for {row[0]}')
+                            logger.debug(f"different values for {row['mac']}")
                             print(f'old {iseCustomAttrib}')
                             print(f'new {attributes}')
-                            # oldCertainty = iseCustomAttrib['isepyCertainty'].split(',')
-                            # newCertainty = attributes['isepyCertainty'].split(',')
-
                             # Compare element-wise
                             for i in range(len(oldCertainty)):
                                 # Convert strings to integers
@@ -224,10 +280,14 @@ async def update_ise_endpoints_async(endpoints_db, redis_db):
                                 value2 = int(newCertainty[i])
                                 if value2 > value1:
                                     new_data = True
+                        ## If the local redis values have newer data for the endpoint, add to ISE update queue
                         if new_data == True:
-                            update = { "customAttributes": attributes, "mac": row[0] } 
+                            update = { "customAttributes": attributes, "mac": row['mac'] } 
                             endpoint_updates.append((update))
-            
+                        else:
+                            print(f"no new data for endoint: {row['mac']}")
+                    add_or_update_redis_entry(remote_redis,row)
+
             logger.debug(f'check for endpoint updates to ISE - Start')
             if len(endpoint_updates) > 0:
                 logger.debug(f'creating, updating {len(endpoint_updates)} endpoints in ISE - Start')
@@ -254,55 +314,121 @@ async def update_ise_endpoints_async(endpoints_db, redis_db):
                 logger.debug(f'no endpoints created or updated in ISE')
             end_time = time.time()
             logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
+        logger.debug(f'gather active endpoints - Completed')
     except asyncio.CancelledError:
         logging.warning('routine check task cancelled')
         raise
     except Exception as e:
         logging.warning(f'an error occured during routine check: {e}')
 
-### REDIS SECTION
-def connect_to_redis():
-    # Connect to Redis server
-    r = redis.Redis(host='localhost', port=6379, db=0)
-    return r
+async def updated_local_entries_async(local_redis):
+    # Retrieve all MAC addresses stored in the local database
+    mac_addresses = local_redis.smembers("endpoints:macs")
+    updated_records = []
 
-async def check_mac_redis_status_async(redis_db, mac_address, values):
-    # Check if MAC address exists in the database
-    if redis_db.exists(mac_address):
-        # Retrieve existing values
-        existing_values = redis_db.hgetall(mac_address)
-        existing_values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_values.items()}
+    for mac in mac_addresses:
+        # Decode MAC address from bytes to string
+        mac_str = mac.decode('utf-8')
         
-        # Compare existing values with new values
-        if existing_values_decoded != values:
-            logger.debug(f"redis MAC address {mac_address} exists and has different values")
-            logger.debug(f'{mac_address} existing: {existing_values_decoded} - new values: {values}')
-            return False
-        else:
-            # logger.debug(f"redis MAC address {mac_address} exists and already has the same values")
-            ## Endpoint is up to date in Redis DB
-            return True
-    else:
-        # Update the record if MAC address does not exist
-        redis_db.hset(mac_address, mapping=values)
-        logger.debug(f"redis MAC address {mac_address} added to the database with values")
-        return False
+        # Retrieve the hash for each MAC address
+        entry = local_redis.hgetall(f"endpoint:{mac_str}")
+        entry = {k.decode('utf-8'): v.decode('utf-8') for k, v in entry.items()}
 
-def print_all_endpoints(redis_db):
-    # Retrieve and print all MAC addresses and their values in the database
-    keys = redis_db.keys('*')  # Get all keys in the database
-    logger.debug('print all endpoints in Redis DB')
-    for key in keys:
-        key_str = key.decode('utf-8')
-        if redis_db.type(key) == b'hash':  # Ensure the key is a hash
-            values = redis_db.hgetall(key_str)
-            values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in values.items()}
-            logger.debug(f"MAC Address: {key_str}, Values: {values_decoded}")
+        # Check if the 'updated' field is set to 'True'
+        if entry.get('up_to_date') == 'True':
+            updated_records.append(entry)
 
-def clear_redis_db(redis_db):
-    # Clear all entries in the Redis database
-    redis_db.flushdb()
-    logger.debug('clearing of Redis DB - Complete')
+    return updated_records
+
+## Update the redis local cache DB based on parser data
+def add_or_update_redis_entry(redis_db,data_array):
+    # Map array values to field names
+    fields = [
+        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
+        'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
+        'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
+        'serial_weight', 'device_type_weight'
+    ]
+    
+    # new_entry = {fields[i]: str(data_array[i]) for i in range(len(fields))}
+    new_entry = {field: str(data_array.get(field, '')) for field in fields}
+    
+    # Add dynamically generated timestamp
+    new_entry['timestamp'] = datetime.now().isoformat()
+    # Default 'updated' to False initially
+    new_entry['up_to_date'] = 'False'
+
+    mac = new_entry['mac']
+    existing_data = redis_db.hgetall(f"endpoint:{mac}")
+
+    # Convert existing data from bytes to string if it exists
+    if existing_data:
+        existing_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_data.items()}
+
+        # Check weight fields to decide whether to update
+        weight_fields = ['id_weight', 'name_weight', 'vendor_weight', 'hw_weight', 'sw_weight', 
+                         'productID_weight', 'serial_weight', 'device_type_weight']
+        
+        can_update = all(
+            int(new_entry[field]) >= int(existing_data.get(field, '0')) for field in weight_fields
+        )
+
+        if not can_update:
+            print(f"Record for MAC {mac} not updated due to lower weight values.")
+            return
+
+    # Update the 'updated' field if we're updating the record
+    new_entry['up_to_date'] = 'True'
+
+    # Add or update the record in the local database
+    redis_db.hset(f"endpoint:{mac}", mapping=new_entry)
+    redis_db.sadd("endpoints:macs", mac)
+    print(f"Record for MAC {mac} added or updated.")
+    print(f'number of local || remote redis entries: {local_db.dbsize()} || {remote_db.dbsize()}')
+
+## Update the redis local cache DB based on parser data
+def add_or_update_local_entry(data_array):
+    # Map array values to field names
+    fields = [
+        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
+        'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
+        'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
+        'serial_weight', 'device_type_weight'
+    ]
+    
+    new_entry = {fields[i]: str(data_array[i]) for i in range(len(fields))}
+    
+    # Add dynamically generated timestamp
+    new_entry['timestamp'] = datetime.now().isoformat()
+    # Default 'updated' to False initially
+    new_entry['up_to_date'] = 'False'
+
+    mac = new_entry['mac']
+    existing_data = local_db.hgetall(f"endpoint:{mac}")
+
+    # Convert existing data from bytes to string if it exists
+    if existing_data:
+        existing_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_data.items()}
+
+        # Check weight fields to decide whether to update
+        weight_fields = ['id_weight', 'name_weight', 'vendor_weight', 'hw_weight', 'sw_weight', 
+                         'productID_weight', 'serial_weight', 'device_type_weight']
+        
+        can_update = all(
+            int(new_entry[field]) >= int(existing_data.get(field, '0')) for field in weight_fields
+        )
+
+        if not can_update:
+            print(f"Record for MAC {mac} not updated due to lower weight values.")
+            return
+
+    # Update the 'updated' field if we're updating the record
+    new_entry['up_to_date'] = 'True'
+
+    # Add or update the record in the local database
+    local_db.hset(f"endpoint:{mac}", mapping=new_entry)
+    local_db.sadd("endpoints:macs", mac)
+    print(f"Record for MAC {mac} added or updated.")
 
 ## Return a list of processes matching 'name' (https://psutil.readthedocs.io/en/latest/)
 def find_procs_by_name(name):
@@ -353,13 +479,14 @@ def process_packet(packet, highest_layer):
             if inspection_layer == 'XML':
                 fn = parser.parse_xml(packet)
                 if fn is not None:
-                    endpoints.update_db_list(fn)
+                    # endpoints.update_db_list(fn)
+                    add_or_update_local_entry(fn)
             else:
                 for layer in packet.layers:
                     fn = packet_callbacks.get(layer.layer_name)
                     if fn is not None:
-                        endpoints.update_db_list(fn(packet))
-        
+                        # endpoints.update_db_list(fn(packet))
+                        add_or_update_local_entry(fn(packet))
     except Exception as e:
         logger.debug(f'error processing packet details {highest_layer}: {e}')
 
@@ -390,8 +517,8 @@ def capture_live_packets(network_interface, bpf_filter):
 async def default_update_loop():
     try:
         while True:
-            await asyncio.sleep(5.0)
-            await update_ise_endpoints_async(endpoints, redis_client)
+            await asyncio.sleep(10.0)
+            await update_ise_endpoints_async2(local_db, remote_db)
     except asyncio.CancelledError as e:
         pass
     logger.debug(f'shutting down loop instance')
@@ -431,20 +558,80 @@ if __name__ == '__main__':
     fqdn = 'https://10.0.1.90'
     interface = 'en0'
     
-    ## Validate that defined ISE instance has Custom Attributes defined
-    logger.warning(f'checking ISE custom attributes - Start')
-    start_time = time.time()
-    current_attribs = get_ise_attributes()
-    validate_attributes(current_attribs, variables)
-    end_time = time.time()
-    logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
+    # ## Validate that defined ISE instance has Custom Attributes defined
+    # logger.warning(f'checking ISE custom attributes - Start')
+    # start_time = time.time()
+    # current_attribs = get_ise_attributes()
+    # validate_attributes(current_attribs, variables)
+    # end_time = time.time()
+    # logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
 
     logger.warning(f'SQLDB and Redis DB creation - Start')
     start_time = time.time()
     endpoints = endpointsdb()
     endpoints.create_database()
-    redis_client = connect_to_redis()
-    clear_redis_db(redis_client)
+
+    mac_address = '00:11:22:33:44:55'
+    # Example data for the local database
+    local_example_data = {
+        'mac': mac_address,
+        'protocol': 'TCP',
+        'ip': '192.168.1.1',
+        'id': 'device123',
+        'name': 'LocalDevice',
+        'vendor': 'LocalVendor',
+        'hw': 'HW1',
+        'sw': 'SW1',
+        'productID': 'ProductLocal',
+        'serial': 'SerialLocal',
+        'device_type': 'Router',
+        'id_weight': '1',
+        'name_weight': '1',
+        'vendor_weight': '1',
+        'hw_weight': '1',
+        'sw_weight': '1',
+        'productID_weight': '1',
+        'serial_weight': '1',
+        'device_type_weight': '1',
+        'timestamp': '2023-10-05T14:48:00',
+        'up_to_date': 'True'
+    }
+    # Example data for the remote database
+    remote_example_data = {
+        'mac': mac_address,
+        'protocol': 'TCP',
+        'ip': '192.168.1.2',
+        'id': 'device123',
+        'name': 'RemoteDevice',
+        'vendor': 'RemoteVendor',
+        'hw': 'HW1',
+        'sw': 'SW2',
+        'productID': 'ProductRemote',
+        'serial': 'SerialRemote',
+        'device_type': 'Router',
+        'id_weight': '1',
+        'name_weight': '1',
+        'vendor_weight': '1',
+        'hw_weight': '1',
+        'sw_weight': '1',
+        'productID_weight': '1',
+        'serial_weight': '1',
+        'device_type_weight': '1',
+        'timestamp': '2023-10-05T14:49:00',
+        'up_to_date': 'False'
+    }
+    
+    logger.warning(f'redis databases creation - Start')
+    # Use db=0 for local data
+    local_db = redis.Redis(host='localhost', port=6379, db=0)
+    # Use db=1 for remote data
+    remote_db = redis.Redis(host='localhost', port=6379, db=1)
+    local_db.flushdb()
+    remote_db.flushdb()
+    print(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    local_db.hset(f"endpoint:{mac_address}", mapping=local_example_data)
+    remote_db.hset(f"endpoint:{mac_address}", mapping=remote_example_data)
+    print(f'after template, local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
     end_time = time.time()
     logger.warning(f'SQLDB and Redis DB creation - Completed: {round(end_time - start_time,4)}sec')
 
@@ -457,7 +644,6 @@ if __name__ == '__main__':
     def signal_handlers():
         global capture_running
         main_task.cancel()
-        # reregister_task.cancel()
         capture_running = False
     loop = asyncio.get_event_loop()
     loop.add_signal_handler(SIGINT, signal_handlers)
@@ -483,5 +669,11 @@ if __name__ == '__main__':
     logger.warning(f'### LIVE PACKET CAPTURE STOPPED ###')
 
     ## REDIS OUTPUT
-    logger.debug(f'number of redis entries: {redis_client.dbsize()}')
-    clear_redis_db(redis_client)
+    # logger.debug(f'number of redis entries: {local_db.dbsize()}')
+    print(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    print(f'LOCAL ENTRIES')
+    print_all_endpoints(local_db)
+    print(f'REMOTE ENTRIES')
+    print_all_endpoints(remote_db)
+    local_db.flushdb()
+    remote_db.flushdb()
