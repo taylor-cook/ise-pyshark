@@ -14,6 +14,7 @@ from datetime import datetime
 from signal import SIGINT, SIGTERM
 from pathlib import Path
 from ise_pyshark import parser
+from ise_pyshark.apis import apis
 from ise_pyshark import endpointsdb
 from requests.auth import HTTPBasicAuth
 from urllib3.exceptions import InsecureRequestWarning
@@ -54,99 +55,6 @@ variables = {'isepyVendor':'String',
             }
 newVariables = {}
 
-def get_ise_attributes():
-    url_suffix = "/api/v1/endpoint-custom-attribute"
-    try:
-        response = requests.get(fqdn + url_suffix, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.warning('Unable to gather ISE Custom Attributes.  Check provided credentials and verify required permissions')
-            sys.exit(0)
-    except requests.exceptions.RequestException as err:
-        logger.warning(f"Unable to communicate with ISE server - {err}")
-        logger.warning('Exiting ise-pyshark program')
-        sys.exit(0)
-
-def validate_attributes(output, vars):
-    # Create a set of attribute names from the JSON output
-    output_attribute_names = {item.get('attributeName') for item in output}
-    
-    # Check for missing attributes in the output
-    for variable_name, variable_type in vars.items():
-        if variable_name not in output_attribute_names:
-            logger.warning(f"{variable_name} is missing from the configured ISE Custom Attributes.")
-            create_ise_attribute(variable_name, variable_type)
-    
-    # Iterate through each item in the output list
-    for item in output:
-        # Extract the attribute name and type from the item
-        attribute_name = item.get('attributeName')
-        attribute_type = item.get('attributeType')
-        
-        # Check if the attribute name is in the variables dictionary
-        if attribute_name in vars:
-            # Check if the attribute type matches the one in the variables dictionary
-            if vars[attribute_name] == attribute_type:
-                logger.debug(f"Custom Attribute {attribute_name} : {attribute_type} already defined.")
-            else:
-                logger.debug(f"Custom Attribute {attribute_name} : {attribute_type} does NOT match the expected type. Expected {variables[attribute_name]}, got {attribute_type}.")
-        else:
-            logger.debug(f"Skipping Custom Attribute '{attribute_name}' as it is not required for this program.")
-
-def create_ise_attribute(name, type):
-    url = f'{fqdn}/api/v1/endpoint-custom-attribute'
-    data = {"attributeName": name,"attributeType": type}
-    try:
-        response = requests.post(url, headers=headers, json=data, auth=HTTPBasicAuth(username, password), verify=False)
-        if response.status_code == 200 or response.status_code == 201:
-            logger.debug(f'api response = {response.json()}')
-    except requests.exceptions.RequestException as err:
-        logger.warning(f'Unable to create required ISE Custom Attributes - {err}')
-        logger.warning('Exiting ise-pyshark program')
-        sys.exit(0)
-
-async def get_ise_endpoint_async(mac):
-    url = f'{fqdn}/api/v1/endpoint/{mac}'
-    try:
-        start_get = time.time()
-        response = requests.get(url, headers=headers, auth=HTTPBasicAuth(username, password), verify=False)
-        end_get = time.time()
-        logger.debug(f'API call to ISE for {mac} - ISE response time: {round(end_get - start_get,4)}sec')
-        ## If an endpoint exists...
-        if response.status_code != 404:
-            result = response.json()
-            custom_attributes = result.get('customAttributes', {})
-            if custom_attributes ==  None:
-                return "no_values"
-            else:
-                print(f'API response for {mac}: {custom_attributes}')
-                custom_attributes_dict = {}
-                for key, value in custom_attributes.items():
-                    custom_attributes_dict[key] = value
-                return custom_attributes
-        else:
-            return None
-    except requests.exceptions.RequestException as err:
-        logger.debug(f'An error occurred: {err}')
-        return None
-
-async def bulk_update_put_async(update):
-    url = f'{fqdn}/api/v1/endpoint/bulk'
-    try:
-        response = requests.put(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-        logger.debug(f'api response = {response.json()}')
-    except requests.exceptions.RequestException as err:
-        logger.warning(f'unable to update endponits within ISE - {err}')
-
-async def bulk_update_post_async(update):
-    url = f'{fqdn}/api/v1/endpoint/bulk'
-    try:
-        response = requests.post(url, headers=headers, json=update, auth=HTTPBasicAuth(username, password), verify=False)
-        logger.debug(f'api response = {response.json()}')
-    except requests.exceptions.RequestException as err:
-        logger.warning(f'unable to update endponits within ISE - {err}')
-
 ### REDIS SECTION
 def connect_to_redis():
     # Connect to Redis server
@@ -158,7 +66,7 @@ async def check_redis_remote_cache_async(redis_db, mac_address, values):
     
     # Define the fields to check
     fields = [
-        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
+        'mac', 'protocols', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
         'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
         'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
         'serial_weight', 'device_type_weight'
@@ -169,9 +77,33 @@ async def check_redis_remote_cache_async(redis_db, mac_address, values):
         # Decode the existing values from bytes to strings
         existing_values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_values.items()}
 
-        # Filter both existing and new values to only include the specified fields
+        # Filter existing values to only include the specified fields
         existing_filtered = {field: existing_values_decoded.get(field, '') for field in fields}
-        new_filtered = {field: values.get(field, '') for field in fields}
+
+        certainties = values.get('isepyCertainty', '').split(',')
+
+        # Create new_filtered by mapping values from 'values' dictionary to 'fields'
+        new_filtered = {
+            'mac':mac_address,
+            'protocols': values.get('isepyProtocols', ''),
+            'ip': values.get('isepyIP', ''),
+            'id':'',
+            'name': (values.get('isepyHostname', "")).replace("'","’"),
+            'vendor': values.get('isepyVendor', ''),
+            'hw': values.get('isepyModel', ''),
+            'sw': values.get('isepyOS', ''),
+            'productID': values.get('isepyDeviceID', ''),
+            'serial': values.get('isepySerial', ''),
+            'device_type': values.get('isepyType', ''),
+            'id_weight':'0',
+            'name_weight':certainties[0],
+            'vendor_weight':certainties[1],
+            'hw_weight':certainties[2],
+            'sw_weight':certainties[3],
+            'productID_weight':certainties[4],
+            'serial_weight':certainties[5],
+            'device_type_weight':certainties[6]
+        }
 
         # Compare the filtered existing values with new values
         if existing_filtered != new_filtered:
@@ -179,7 +111,7 @@ async def check_redis_remote_cache_async(redis_db, mac_address, values):
             logger.debug(f'{mac_address} existing: {existing_filtered} - new values: {new_filtered}')
             return False
         else:
-            logger.debug(f"redis MAC address {mac_address} exists and already has the same values")
+            logger.debug(f"redis remote cache MAC address {mac_address} exists and already has the same values")
             return True
     else:
         logger.debug(f"no entry exists in redis remote cache for MAC address {mac_address}")
@@ -201,8 +133,7 @@ def clear_redis_db(redis_db):
     redis_db.flushdb()
     logger.debug('clearing of Redis DB - Complete')
 
-### REDIS SECTION v2
-async def update_ise_endpoints_async2(local_redis, remote_redis):
+async def update_ise_endpoints_async(local_redis, remote_redis):
     try:
         logger.debug(f'gather active endpoints - Start')
         start_time = time.time()
@@ -223,7 +154,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                         "isepyDeviceID": row['productID'],
                         "isepySerial": row['serial'],
                         "isepyType": row['device_type'],
-                        "isepyProtocols": row['protocol'],
+                        "isepyProtocols": row['protocols'],
                         "isepyIP": row['ip'],
                         "isepyCertainty" : str(row['name_weight'])+","+str(row['vendor_weight'])+","+str(row['hw_weight'])+","+str(row['sw_weight'])+","+str(row['productID_weight'])+","+str(row['serial_weight'])+","+str(row['device_type_weight'])
                         }
@@ -232,7 +163,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                 status = await check_redis_remote_cache_async(remote_redis,row['mac'],attributes)
                 ## If the value does not exist in remote redis cache, check returned API information against captured values
                 if status == False:
-                    iseCustomAttrib = await get_ise_endpoint_async(row['mac'])
+                    iseCustomAttrib = await ise_apis.get_ise_endpoint_async(row['mac'])
                     if iseCustomAttrib == "no_values":
                         ## If endpoint exists, but custom attributes not populated, add to update queue
                         update = { "customAttributes": attributes, "mac": row['mac'] }
@@ -251,7 +182,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                         
                         ## If certainty score is weighted the same, check individual values for update
                         if attributes['isepyCertainty'] == iseCustomAttrib['isepyCertainty']:
-                            print(f"mac: {row['mac']} - certainty values are the same - checking individual values")
+                            logger.debug(f"mac: {row['mac']} - certainty values are the same - checking individual values")
                             ## Iterate through data fields and check against ISE current values
                             for key in attributes:
                                 ## If checking the protocols observed field...
@@ -271,8 +202,6 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                         ## Check if the existing ISE fields match the new attribute values
                         if attributes['isepyCertainty'] != iseCustomAttrib['isepyCertainty']:
                             logger.debug(f"different values for {row['mac']}")
-                            print(f'old {iseCustomAttrib}')
-                            print(f'new {attributes}')
                             # Compare element-wise
                             for i in range(len(oldCertainty)):
                                 # Convert strings to integers
@@ -285,7 +214,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                             update = { "customAttributes": attributes, "mac": row['mac'] } 
                             endpoint_updates.append((update))
                         else:
-                            print(f"no new data for endoint: {row['mac']}")
+                            logger.debug(f"no new data for endoint: {row['mac']}")
                     add_or_update_redis_entry(remote_redis,row)
 
             logger.debug(f'check for endpoint updates to ISE - Start')
@@ -296,7 +225,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                     chunk = endpoint_updates[i:i + chunk_size]
                     ## TODO perform similar try/except blocks with timeouts for other API and async-based functions
                     try:
-                        result = await asyncio.wait_for(bulk_update_put_async(chunk), timeout=3)
+                        result = await asyncio.wait_for(ise_apis.bulk_update_put_async(chunk), timeout=3)
                     except asyncio.TimeoutError:
                         logger.warning('API call to ISE for endpoint update timed out')
                 logger.debug(f'updating {len(endpoint_updates)} endpoints in ISE - Completed')
@@ -306,7 +235,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
                 for i in range(0, len(endpoint_creates),chunk_size):
                     chunk = endpoint_creates[i:i + chunk_size]
                     try: 
-                        result = await asyncio.wait_for(bulk_update_post_async(chunk), timeout=3)
+                        result = await asyncio.wait_for(ise_apis.bulk_update_post_async(chunk), timeout=3)
                     except asyncio.TimeoutError:
                         logger.warning('API call to ISE for endpoint creation timed out')
                 logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
@@ -321,6 +250,7 @@ async def update_ise_endpoints_async2(local_redis, remote_redis):
     except Exception as e:
         logging.warning(f'an error occured during routine check: {e}')
 
+## Check all local entries for "up_to_date"
 async def updated_local_entries_async(local_redis):
     # Retrieve all MAC addresses stored in the local database
     mac_addresses = local_redis.smembers("endpoints:macs")
@@ -344,15 +274,18 @@ async def updated_local_entries_async(local_redis):
 def add_or_update_redis_entry(redis_db,data_array):
     # Map array values to field names
     fields = [
-        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
+        'mac', 'protocols', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
         'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
         'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
         'serial_weight', 'device_type_weight'
     ]
-    
-    # new_entry = {fields[i]: str(data_array[i]) for i in range(len(fields))}
-    new_entry = {field: str(data_array.get(field, '')) for field in fields}
-    
+    redis_id = redis_db.connection_pool.connection_kwargs.get('db', 0)
+    if redis_id == 0:       ## If referring to the parser's local redis db
+        new_entry = {fields[i]: str(data_array[i]) for i in range(len(fields))}
+    elif redis_id == 1:     ## If utilizing the remote cache db
+        new_entry = {field: str(data_array.get(field, '')) for field in fields}
+    # print(f'new entry db={redis_id} = {new_entry}')
+
     # Add dynamically generated timestamp
     new_entry['timestamp'] = datetime.now().isoformat()
     # Default 'updated' to False initially
@@ -374,7 +307,7 @@ def add_or_update_redis_entry(redis_db,data_array):
         )
 
         if not can_update:
-            print(f"Record for MAC {mac} not updated due to lower weight values.")
+            logger.debug(f"record for MAC {mac} not updated due to lower weight values.")
             return
 
     # Update the 'updated' field if we're updating the record
@@ -383,52 +316,7 @@ def add_or_update_redis_entry(redis_db,data_array):
     # Add or update the record in the local database
     redis_db.hset(f"endpoint:{mac}", mapping=new_entry)
     redis_db.sadd("endpoints:macs", mac)
-    print(f"Record for MAC {mac} added or updated.")
-    print(f'number of local || remote redis entries: {local_db.dbsize()} || {remote_db.dbsize()}')
-
-## Update the redis local cache DB based on parser data
-def add_or_update_local_entry(data_array):
-    # Map array values to field names
-    fields = [
-        'mac', 'protocol', 'ip', 'id', 'name', 'vendor', 'hw', 'sw', 
-        'productID', 'serial', 'device_type', 'id_weight', 'name_weight', 
-        'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight', 
-        'serial_weight', 'device_type_weight'
-    ]
-    
-    new_entry = {fields[i]: str(data_array[i]) for i in range(len(fields))}
-    
-    # Add dynamically generated timestamp
-    new_entry['timestamp'] = datetime.now().isoformat()
-    # Default 'updated' to False initially
-    new_entry['up_to_date'] = 'False'
-
-    mac = new_entry['mac']
-    existing_data = local_db.hgetall(f"endpoint:{mac}")
-
-    # Convert existing data from bytes to string if it exists
-    if existing_data:
-        existing_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in existing_data.items()}
-
-        # Check weight fields to decide whether to update
-        weight_fields = ['id_weight', 'name_weight', 'vendor_weight', 'hw_weight', 'sw_weight', 
-                         'productID_weight', 'serial_weight', 'device_type_weight']
-        
-        can_update = all(
-            int(new_entry[field]) >= int(existing_data.get(field, '0')) for field in weight_fields
-        )
-
-        if not can_update:
-            print(f"Record for MAC {mac} not updated due to lower weight values.")
-            return
-
-    # Update the 'updated' field if we're updating the record
-    new_entry['up_to_date'] = 'True'
-
-    # Add or update the record in the local database
-    local_db.hset(f"endpoint:{mac}", mapping=new_entry)
-    local_db.sadd("endpoints:macs", mac)
-    print(f"Record for MAC {mac} added or updated.")
+    logger.debug(f"record for MAC {mac} added or updated.")
 
 ## Return a list of processes matching 'name' (https://psutil.readthedocs.io/en/latest/)
 def find_procs_by_name(name):
@@ -480,13 +368,13 @@ def process_packet(packet, highest_layer):
                 fn = parser.parse_xml(packet)
                 if fn is not None:
                     # endpoints.update_db_list(fn)
-                    add_or_update_local_entry(fn)
+                    add_or_update_redis_entry(local_db,fn)
             else:
                 for layer in packet.layers:
                     fn = packet_callbacks.get(layer.layer_name)
                     if fn is not None:
                         # endpoints.update_db_list(fn(packet))
-                        add_or_update_local_entry(fn(packet))
+                        add_or_update_redis_entry(local_db,fn(packet))
     except Exception as e:
         logger.debug(f'error processing packet details {highest_layer}: {e}')
 
@@ -517,8 +405,8 @@ def capture_live_packets(network_interface, bpf_filter):
 async def default_update_loop():
     try:
         while True:
-            await asyncio.sleep(10.0)
-            await update_ise_endpoints_async2(local_db, remote_db)
+            await asyncio.sleep(5.0)
+            await update_ise_endpoints_async(local_db, remote_db)
     except asyncio.CancelledError as e:
         pass
     logger.debug(f'shutting down loop instance')
@@ -529,7 +417,7 @@ if __name__ == '__main__':
     logger.addHandler(handler)
     logger.setLevel(logging.DEBUG)
 
-    for modname in ['ise_pyshark.parser', 'ise_pyshark.endpointsdb', 'ise_pyshark.ouidb']:
+    for modname in ['ise_pyshark.parser', 'ise_pyshark.endpointsdb', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
         s_logger = logging.getLogger(modname)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
         s_logger.addHandler(handler)
@@ -558,13 +446,14 @@ if __name__ == '__main__':
     fqdn = 'https://10.0.1.90'
     interface = 'en0'
     
-    # ## Validate that defined ISE instance has Custom Attributes defined
-    # logger.warning(f'checking ISE custom attributes - Start')
-    # start_time = time.time()
-    # current_attribs = get_ise_attributes()
-    # validate_attributes(current_attribs, variables)
-    # end_time = time.time()
-    # logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
+    ## Validate that defined ISE instance has Custom Attributes defined
+    logger.warning(f'checking ISE custom attributes - Start')
+    start_time = time.time()
+    ise_apis = apis(fqdn, username, password, headers)
+    current_attribs = ise_apis.get_ise_attributes()
+    ise_apis.validate_attributes(current_attribs, variables)
+    end_time = time.time()
+    logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
 
     logger.warning(f'SQLDB and Redis DB creation - Start')
     start_time = time.time()
@@ -575,7 +464,7 @@ if __name__ == '__main__':
     # Example data for the local database
     local_example_data = {
         'mac': mac_address,
-        'protocol': 'TCP',
+        'protocols': 'TCP',
         'ip': '192.168.1.1',
         'id': 'device123',
         'name': 'LocalDevice',
@@ -599,7 +488,7 @@ if __name__ == '__main__':
     # Example data for the remote database
     remote_example_data = {
         'mac': mac_address,
-        'protocol': 'TCP',
+        'protocols': 'TCP',
         'ip': '192.168.1.2',
         'id': 'device123',
         'name': 'RemoteDevice',
@@ -621,19 +510,20 @@ if __name__ == '__main__':
         'up_to_date': 'False'
     }
     
-    logger.warning(f'redis databases creation - Start')
+    logger.warning(f'redis DB creation - Start')
     # Use db=0 for local data
     local_db = redis.Redis(host='localhost', port=6379, db=0)
     # Use db=1 for remote data
     remote_db = redis.Redis(host='localhost', port=6379, db=1)
+
     local_db.flushdb()
     remote_db.flushdb()
-    print(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    # print(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
     local_db.hset(f"endpoint:{mac_address}", mapping=local_example_data)
     remote_db.hset(f"endpoint:{mac_address}", mapping=remote_example_data)
-    print(f'after template, local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    # print(f'after template, local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
     end_time = time.time()
-    logger.warning(f'SQLDB and Redis DB creation - Completed: {round(end_time - start_time,4)}sec')
+    logger.warning(f'redis DB creation - Completed: {round(end_time - start_time,4)}sec')
 
     ## Setup the publishing loop
     main_task = asyncio.ensure_future(
@@ -670,10 +560,11 @@ if __name__ == '__main__':
 
     ## REDIS OUTPUT
     # logger.debug(f'number of redis entries: {local_db.dbsize()}')
-    print(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
     print(f'LOCAL ENTRIES')
     print_all_endpoints(local_db)
     print(f'REMOTE ENTRIES')
     print_all_endpoints(remote_db)
     local_db.flushdb()
     remote_db.flushdb()
+    logger.debug(f'redis DB cache cleared')
