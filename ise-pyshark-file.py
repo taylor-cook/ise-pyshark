@@ -1,7 +1,5 @@
 import time
-import requests
 import pyshark
-import urllib3
 import redis
 import asyncio
 import argparse
@@ -11,16 +9,12 @@ import os
 import psutil
 import logging
 import concurrent
-import datetime
+from datetime import datetime
 from signal import SIGINT, SIGTERM
 from pathlib import Path
 from ise_pyshark import parser
 from ise_pyshark import endpointsdb
-from ise_pyshark.apis import apis
-from requests.auth import HTTPBasicAuth
-from urllib3.exceptions import InsecureRequestWarning
-# # Suppress only the single InsecureRequestWarning from urllib3 needed
-urllib3.disable_warnings(InsecureRequestWarning)
+from ise_pyshark import apis
 
 logger = logging.getLogger(__name__)
 headers = {'accept':'application/json','Content-Type':'application/json'}
@@ -29,6 +23,9 @@ capture_running = False
 capture_count = 0
 skipped_packet = 0
 
+# mac_filter = 'eth.addr == a8:b5:7c:ec:cb:64'
+# if mac_filter != '':
+#     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
 packet_callbacks = {
     'mdns': parser.parse_mdns_v7,
@@ -286,12 +283,6 @@ def check_redis_remote_cache(redis_db, mac_address, values):
         logger.debug(f"no entry exists in redis remote cache for MAC address {mac_address}")
         return False
 
-### REDIS SECTION
-def connect_to_redis():
-    # Connect to Redis server
-    r = redis.Redis(host='localhost', port=6379, db=0)
-    return r
-
 def check_mac_redis_status(redis_db, mac_address, values):
     # Check if MAC address exists in the database
     if redis_db.exists(mac_address):
@@ -323,12 +314,7 @@ def print_all_endpoints(redis_db):
         if redis_db.type(key) == b'hash':  # Ensure the key is a hash
             values = redis_db.hgetall(key_str)
             values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in values.items()}
-            logger.debug(f"MAC Address: {key_str}, Values: {values_decoded}")
-
-def clear_redis_db(redis_db):
-    # Clear all entries in the Redis database
-    redis_db.flushdb()
-    logger.debug('clearing of Redis DB - Complete')
+            print(f"MAC Address: {key_str}, Values: {values_decoded}")
 
 ### Process network packets using global Parser instance and dictionary of supported protocols
 def process_packet(packet, highest_layer):
@@ -420,8 +406,6 @@ if __name__ == '__main__':
     start_time = time.time()
     endpoints = endpointsdb()
     endpoints.create_database()
-    # redis_client = connect_to_redis()
-    # clear_redis_db(redis_client)
 
     mac_address = '00:11:22:33:44:55'
     # Example data for the local database

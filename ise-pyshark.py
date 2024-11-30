@@ -1,7 +1,5 @@
 import time
-import requests
 import pyshark
-import urllib3
 import redis
 import asyncio
 import argparse
@@ -16,10 +14,6 @@ from pathlib import Path
 from ise_pyshark import parser
 from ise_pyshark.apis import apis
 from ise_pyshark import endpointsdb
-from requests.auth import HTTPBasicAuth
-from urllib3.exceptions import InsecureRequestWarning
-# # Suppress only the single InsecureRequestWarning from urllib3 needed
-urllib3.disable_warnings(InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 headers = {'accept':'application/json','Content-Type':'application/json'}
@@ -54,12 +48,6 @@ variables = {'isepyVendor':'String',
              'isepyCertainty':'String'
             }
 newVariables = {}
-
-### REDIS SECTION
-def connect_to_redis():
-    # Connect to Redis server
-    r = redis.Redis(host='localhost', port=6379, db=0)
-    return r
 
 async def check_redis_remote_cache_async(redis_db, mac_address, values):
     existing_values = redis_db.hgetall(f"endpoint:{mac_address}")
@@ -127,11 +115,6 @@ def print_all_endpoints(redis_db):
             values = redis_db.hgetall(key_str)
             values_decoded = {k.decode('utf-8'): v.decode('utf-8') for k, v in values.items()}
             logger.debug(f"MAC Address: {key_str}, Values: {values_decoded}")
-
-def clear_redis_db(redis_db):
-    # Clear all entries in the Redis database
-    redis_db.flushdb()
-    logger.debug('clearing of Redis DB - Complete')
 
 async def update_ise_endpoints_async(local_redis, remote_redis):
     try:
@@ -405,7 +388,7 @@ def capture_live_packets(network_interface, bpf_filter):
 async def default_update_loop():
     try:
         while True:
-            await asyncio.sleep(5.0)
+            await asyncio.sleep(30.0)
             await update_ise_endpoints_async(local_db, remote_db)
     except asyncio.CancelledError as e:
         pass

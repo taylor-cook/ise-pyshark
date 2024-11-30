@@ -13,7 +13,7 @@ class ouidb:
         self.raw_data_file = pkg_resources.resource_filename('ise_pyshark', raw_data_file)
         self.pipe_file = pkg_resources.resource_filename('ise_pyshark', pipe_file)
         self.database_file = pkg_resources.resource_filename('ise_pyshark', database_file)
-        self._initialize_database()
+        # self._initialize_database()
 
     def _initialize_database(self):
         self.download_macoui_data()

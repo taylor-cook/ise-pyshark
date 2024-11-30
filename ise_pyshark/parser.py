@@ -89,16 +89,22 @@ class parser:
         if 'usb_MDL=' in txt:
             values[6] = txt.replace('usb_MDL=','')
             values[14] = 70
-            if 'Brother' in values[5] and ('MDL=MFC-' in values[6] or 'MDL=DCP-' in values[6] or 'MDL=HL-' in values[6]):
+            if 'Brother' in values[5] and ('MDL=MFC-' in values[8] or 'MDL=DCP-' in values[8] or 'MDL=HL-' in values[8]):
                 values[10] = 'Printer'
                 values[18] = 80
-            elif 'EPSON' in values[5] and 'MDL=ET-' in values[6]:
+            elif 'EPSON' in values[5] and 'MDL=ET-' in values[8]:
                 values[10] = 'Printer'
                 values[18] = 80
-            elif ('HP' in values[5] or 'Hewlett-Packard' in values[5]) and ('LaserJet' in values[6] or 'ENVY Photo' in values[6]):
+            elif ('HP' in values[5] or 'Hewlett-Packard' in values[5]) and ('LaserJet' in values[8] or 'ENVY Photo' in values[8]):
                 values[10] = 'Printer'
                 values[18] = 80
             return values
+
+        ## If exceptionally long txt value, likely composite value string and needs to be parsed
+        if 'model=' in txt and len(txt) >= 100:
+            match = re.search(r"(model=[^\']+)", txt)
+            if match:
+                txt = match.group(1)
 
         ## Look through models dict, first by OUI details
         for oui, models in models_data.items():
@@ -117,7 +123,7 @@ class parser:
         ## If model data doesn't match any record, record model data and use lower certainty
         if model_match is not True:
             values[16] = 30
-            logger.debug(f'No model found: {values[0]}: {values[5]} - {txt}')
+            logger.info(f'No model found: {values[0]}: {values[5]} - {txt}')
         return values
 
     def parse_mac_ip(self, packet):
@@ -194,7 +200,7 @@ class parser:
                             ## If model data doesn't match any record, record model data and use lower certainty
                             if model_match == False:
                                 asset_values[16] = 30
-                                # logger.debug(f'No model found: {values[0]}: {values[5]} - {txt}')
+                                # logger.info(f'No model found: {values[0]}: {values[5]} - {txt}')
                 ## If a more specific match was created, don't apply generic labels
                 if model_match == False:
                     if user_agent.is_pc is True:
@@ -289,10 +295,10 @@ class parser:
                 if friendlyName is not None:
                     asset_values[4] = friendlyName.text
                     asset_values[12] = 80
-                manufacturer = root.find(".//{urn:schemas-upnp-org:device-1-0}manufacturer")
-                if manufacturer is not None:
-                    asset_values[5] = manufacturer.text
-                    asset_values[13] = 80
+                # manufacturer = root.find(".//{urn:schemas-upnp-org:device-1-0}manufacturer")
+                # if manufacturer is not None:
+                #     asset_values[5] = manufacturer.text
+                #     asset_values[13] = 80
                 modelNumber = root.find(".//{urn:schemas-upnp-org:device-1-0}modelNumber")
                 if modelNumber is not None:
                     asset_values[8] = modelNumber.text
