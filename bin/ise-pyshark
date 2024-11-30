@@ -13,7 +13,7 @@ from datetime import datetime
 from signal import SIGINT, SIGTERM
 from pathlib import Path
 from ise_pyshark import parser
-from ise_pyshark.apis import apis
+from ise_pyshark import apis
 from ise_pyshark import endpointsdb
 
 logger = logging.getLogger(__name__)
