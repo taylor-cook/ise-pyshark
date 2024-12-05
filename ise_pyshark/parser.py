@@ -91,20 +91,22 @@ class parser:
             values[14] = 70
             if 'Brother' in values[5] and ('MDL=MFC-' in values[8] or 'MDL=DCP-' in values[8] or 'MDL=HL-' in values[8]):
                 values[10] = 'Printer'
-                values[18] = 80
+                values[16], values[18] = 80, 80
             elif 'EPSON' in values[5] and 'MDL=ET-' in values[8]:
                 values[10] = 'Printer'
-                values[18] = 80
+                values[16], values[18] = 80, 80
             elif ('HP' in values[5] or 'Hewlett-Packard' in values[5]) and ('LaserJet' in values[8] or 'ENVY Photo' in values[8]):
                 values[10] = 'Printer'
-                values[18] = 80
+                values[16], values[18] = 80, 80
             return values
 
         ## If exceptionally long txt value, likely composite value string and needs to be parsed
         if 'model=' in txt and len(txt) >= 100:
             match = re.search(r"(model=[^\']+)", txt)
+            ## If match, replace  current value of 'model' field with just model= details and peform match lookup
             if match:
                 txt = match.group(1)
+                values[8] = match.group(1)
 
         ## Look through models dict, first by OUI details
         for oui, models in models_data.items():
@@ -403,13 +405,16 @@ class parser:
                             if 'Amazon' in asset_values[5] and '_amzn-alexa._tcp.local' in layer._all_fields['Answers'][key]['dns.resp.name']:
                                 asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'Smart Device'
                                 asset_values[14], asset_values[18] = 30, 30
-                        
-                        result = layer._all_fields['Answers'][key]['dns.resp.name'].partition('.')[0]
-                        if '@' in result:
-                            asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
-                        else:
-                            asset_values[4] = result
-                        asset_values[12] = 60
+                        if int(asset_values[12]) < 20:
+                            result = layer._all_fields['Answers'][key]['dns.resp.name'].partition('.')[0]
+                            # print(f'mdns name result = {result}')
+                            if '@' in result:
+                                asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                asset_values[12] = 20
+                            else:
+                                asset_values[4] = result
+                                asset_values[12] = 10
+                        # asset_values[12] = 60
                         for item in layer._all_fields['Answers'][key]['dns.txt']:
                             if len(str(item)) == 1:     ## Avoid parsing mDNS record letter by letter
                                 break       
@@ -419,7 +424,7 @@ class parser:
                                     asset_values[12] = 80
                                 if item[0:3] == 'ad=':
                                     asset_values = self.parse_model_and_os(asset_values, item)
-                            if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item:
+                            if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item:
                                 asset_values = self.parse_model_and_os(asset_values, item)                            
                             elif "name=" in item:
                                 asset_values[4] = item.partition('=')[2]
