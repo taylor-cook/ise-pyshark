@@ -3,17 +3,16 @@ import pyshark
 import redis
 import asyncio
 import argparse
+import ipaddress
 import netifaces
 import sys
 import os
 import psutil
 import logging
-from datetime import datetime
 from signal import SIGINT, SIGTERM
-from pathlib import Path
 from ise_pyshark import parser
 from ise_pyshark import apis
-from ise_pyshark.redis_endpoints import redis_endpoints
+from ise_pyshark import eps
 
 logger = logging.getLogger(__name__)
 headers = {'accept':'application/json','Content-Type':'application/json'}
@@ -41,6 +40,15 @@ variables = {'isepyVendor':'String',
              'isepyCertainty':'String'
             }
 newVariables = {}
+
+## Confirm provided value is valid IP address
+def is_valid_IP(address):
+    try:
+        # Attempt to create an IPv4 address object
+        ipaddress.IPv4Address(address)
+        return True
+    except ipaddress.AddressValueError:
+        return False
 
 async def update_ise_endpoints_async(local_redis, remote_redis):
     try:
@@ -261,7 +269,7 @@ if __name__ == '__main__':
     # argparser.add_argument('-i', '--interface', required=True, help='Network interface to monitor traffic')
     # argparser.add_argument('-D', '--debug',  required=False, action='store_true', help='Enable debug logging')
     # args = argparser.parse_args()
-    redis_eps = redis_endpoints()
+    redis_eps = eps()
     ints = netifaces.interfaces()
     # if args.interface not in ints:
     #     logger.debug(f'Invalid interface name provided: {args.interface}.')
@@ -280,7 +288,7 @@ if __name__ == '__main__':
     # else:
     #     logger.setLevel(logging.DEBUG)
 
-    for modname in ['ise_pyshark.parser', 'ise_pyshark.redis_endpoints', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
+    for modname in ['ise_pyshark.parser', 'ise_pyshark.eps', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
         s_logger = logging.getLogger(modname)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
         s_logger.addHandler(handler)
@@ -300,9 +308,15 @@ if __name__ == '__main__':
     
     username = 'api-admin'
     password = 'Password123'
-    fqdn = 'https://10.0.1.90'
+    ip = 'https://10.0.1.90'
     interface = 'en0'
     
+    if is_valid_IP(ip) == False:
+        print('Invalid IP address provided')
+        sys.exit(0)
+
+    fqdn = 'https://'+ip
+
     ## Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')
     start_time = time.time()

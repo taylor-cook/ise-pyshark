@@ -3,18 +3,13 @@ import pyshark
 import redis
 import asyncio
 import argparse
-import netifaces
-import sys
-import os
-import psutil
+import ipaddress
 import logging
-import concurrent
-from datetime import datetime
-from signal import SIGINT, SIGTERM
+import sys
 from pathlib import Path
 from ise_pyshark import parser
 from ise_pyshark import apis
-from ise_pyshark.redis_endpoints import redis_endpoints
+from ise_pyshark import eps
 
 logger = logging.getLogger(__name__)
 headers = {'accept':'application/json','Content-Type':'application/json'}
@@ -23,9 +18,9 @@ capture_running = False
 capture_count = 0
 skipped_packet = 0
 
-mac_filter = 'eth.addr == c0:3e:ba:c3:06:9d'
-if mac_filter != '':
-    default_filter = mac_filter + ' && ' + default_filter
+# mac_filter = 'eth.addr == 20:cf:ae:55:db:82'
+# if mac_filter != '':
+#     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
 packet_callbacks = {
     'mdns': parser.parse_mdns_v7,
@@ -47,6 +42,15 @@ variables = {'isepyVendor':'String',
              'isepyCertainty':'String'
             }
 newVariables = {}
+
+## Confirm provided value is valid IP address
+def is_valid_IP(address):
+    try:
+        # Attempt to create an IPv4 address object
+        ipaddress.IPv4Address(address)
+        return True
+    except ipaddress.AddressValueError:
+        return False
 
 ## Pull up the cache of local endpoints and then send updates to ISE
 def update_ise_endpoints(local_redis, remote_redis):
@@ -208,7 +212,7 @@ if __name__ == '__main__':
     # argparser.add_argument('-f', '--file', required=True, help='The PCAP(NG) file to analyze')
     # argparser.add_argument('-D', '--debug',  required=False, action='store_true', help='Enable debug logging')
     # args = argparser.parse_args()
-    redis_eps = redis_endpoints()
+    redis_eps = eps()
 
     # if Path(args.file).exists() == False:
     #     logger.warning(f'Invalid capture file provided: {args.file}')
@@ -226,7 +230,7 @@ if __name__ == '__main__':
     # else:
     #     logger.setLevel(logging.DEBUG)
 
-    for modname in ['ise_pyshark.parser', 'ise_pyshark.redis_endpoints', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
+    for modname in ['ise_pyshark.parser', 'ise_pyshark.eps', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
         s_logger = logging.getLogger(modname)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
         s_logger.addHandler(handler)
@@ -246,8 +250,14 @@ if __name__ == '__main__':
 
     username = 'api-admin'
     password = 'Password123'
-    fqdn = 'https://10.0.1.90'
+    ip = '10.0.1.90'
     filename = 'captures/simulation.pcapng'
+
+    if is_valid_IP(ip) == False:
+        print('Invalid IP address provided')
+        sys.exit(0)
+
+    fqdn = 'https://'+ip
     
     ## Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')
@@ -274,14 +284,16 @@ if __name__ == '__main__':
     process_capture_file(filename, default_filter)
     end_time = time.time()
     print(f'Time taken: {round(end_time - start_time,4)}sec')
-    update_ise_endpoints(local_db, remote_db)
+    redis_eps.print_endpoints(local_db)
+    # update_ise_endpoints(local_db, remote_db)
 
     # logger.debug(f'number of redis entries: {local_db.dbsize()}')
     logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
-    print(f'LOCAL ENTRIES')
-    redis_eps.print_endpoints(local_db)
-    print(f'REMOTE ENTRIES')
-    redis_eps.print_endpoints(remote_db)
+    # print(f'LOCAL ENTRIES')
+    # redis_eps.print_endpoints(local_db)
+    # print(f'REMOTE ENTRIES')
+    # redis_eps.print_endpoints(remote_db)
     local_db.flushdb()
     remote_db.flushdb()
     logger.info(f'redis DB cache cleared')
+    logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')

@@ -25,6 +25,7 @@ ise_attributes = {'isepyVendor':'String',
 
 class apis:
     def __init__(self, fqdn, user, pwd, headers):
+        ## TODO - check for multiple entries in FQDN field, and if multiple, include 'keep-alive' check for connectivity in case of failure
         self.fqdn = fqdn
         self.user = user
         self.pwd = pwd

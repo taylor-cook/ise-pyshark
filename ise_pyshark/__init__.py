@@ -7,7 +7,7 @@ from .endpointsdb import endpointsdb
 from .ouidb import ouidb
 from .parser import parser
 from .apis import apis
-from .redis_endpoints import redis_endpoints
+from .eps import eps
 
 logger = logging.getLogger(__name__)
 from . import _version

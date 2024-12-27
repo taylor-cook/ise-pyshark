@@ -17,6 +17,8 @@ oui_manager = ouidb(macoui_url, macoui_raw_data_file, macoui_pipe_file, macoui_d
 
 logger = logging.getLogger(__name__)
 
+## TODO - create documentation on specific weighting of attributes from various protocols 
+
 class parser:
     def __init__(self):
         self.apple_os_json = pkg_resources.resource_filename('ise_pyshark','db/apple-os.json')
@@ -108,6 +110,7 @@ class parser:
                 txt = match.group(1)
                 values[8] = match.group(1)
 
+        ## TODO Modify functionality to remove prefix= and instead search raw text values
         ## Look through models dict, first by OUI details
         for oui, models in models_data.items():
             if values[5].lower().startswith(oui.lower()):
@@ -125,6 +128,7 @@ class parser:
         ## If model data doesn't match any record, record model data and use lower certainty
         if model_match is not True:
             values[16] = 30
+            ## TODO Add unknown model details to TXT file for easier export
             logger.info(f'No model found: {values[0]}: {values[5]} - {txt}')
         return values
 
@@ -153,19 +157,24 @@ class parser:
                     ip = packet['ip'].duplicate_layers[0].src
             else:
                 ip = packet['ip'].src
-            return mac, ip, vendor
+        
+            asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
+            if mac is None:
+                return None
+            asset_values[0] = mac
+            asset_values[5] = vendor
+            if 'randomized' not in vendor:
+                asset_values[13] = 80
+            else:
+                asset_values[13] = 20
+            if ip is not None:
+                asset_values[2] = ip
+            return asset_values
         except AttributeError:
-            return None, None, None
+            return None
 
     def parse_http(self, packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'HTTP'
         try:
             layer = packet['http']
@@ -197,7 +206,7 @@ class parser:
                                     model_match = True
                                     asset_values[6] = result['name']
                                     asset_values[10] = result['type']
-                                    asset_values[14], asset_values[16], asset_values[18] = 80, 80, 80
+                                    asset_values[14], asset_values[16], asset_values[18] = 60, 60, 60
                                     break
                             ## If model data doesn't match any record, record model data and use lower certainty
                             if model_match == False:
@@ -229,14 +238,7 @@ class parser:
             return None
 
     def parse_ssdp(self, packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'SSDP'
         try:
             layer = packet['ssdp']
@@ -276,14 +278,7 @@ class parser:
             return None
 
     def parse_xml(self, packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'XML'
         try:
             layer = packet['XML']
@@ -323,14 +318,7 @@ class parser:
             return None
         
     def parse_sip(self, packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'SIP'
         try:
             layer = packet['sip']
@@ -338,21 +326,20 @@ class parser:
             if ua_index != -1:
                 cr_index = layer.msg_hdr.find("\r\n",ua_index)
                 asset_values[8] = layer.msg_hdr[ua_index+12:cr_index]
-                asset_values[16] = 20
+                regex = '(NG-S\d{4}|CTM-[CS]\d{3,4}[A-Z]{0,3})'
+                ## If there is a match for known Cisco IP phone models, perform model lookup
+                match = re.search(regex, asset_values[8])
+                if match:
+                    asset_values = self.parse_model_and_os(asset_values, match.group())
+                ## If there is no model match from the above search, keep the existing model details and give low weight
+                if int(asset_values[16]) < 80:
+                    asset_values[16] = 20
             return asset_values
         except AttributeError:
             return None
 
     def parse_smb_browser(self, packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'SMB'
         try:
             layer = packet['BROWSER']
@@ -370,15 +357,7 @@ class parser:
             return None
 
     def parse_mdns_v7(self,packet):
-        mac, ip, vendor = self.parse_mac_ip(packet)
-        asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
-        
-        if mac is None:
-            return None
-        asset_values[0] = mac
-        asset_values[5] = vendor
-        if ip is not None:
-            asset_values[2] = ip
+        asset_values = self.parse_mac_ip(packet)
         asset_values[1] = 'mDNS'
         try:
             layer = packet['mdns']
@@ -424,7 +403,7 @@ class parser:
                                     asset_values[12] = 80
                                 if item[0:3] == 'ad=':
                                     asset_values = self.parse_model_and_os(asset_values, item)
-                            if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item:
+                            if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item or 'ty=' in item:
                                 asset_values = self.parse_model_and_os(asset_values, item)                            
                             elif "name=" in item:
                                 asset_values[4] = item.partition('=')[2]
