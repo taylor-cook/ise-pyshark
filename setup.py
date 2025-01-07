@@ -42,13 +42,14 @@ setup (
     url='https://github.com/taylor-cook/ise-pyshark',
     download_url='https://github.com/taylor-cook/ise-pyshark',
     install_requires=[
-        'netifaces>=0.11.0',
+        'netifaces>=0.10.7',
         'psutil>=5.9.8',
         'pyshark>=0.6',
         'redis>=5.2.0',
         'requests>=2.31.0',
         'urllib3>=2.2.2',
         'user-agents>=2.2.0',
+        'versioneer>=0.29'
     ],
     include_package_data=True,
     platforms=['OS X','Linux','Windows'],

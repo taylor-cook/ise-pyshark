@@ -164,7 +164,7 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                 logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
             end_time = time.time()
             logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
-        logger.info(f'gather active endpoints - Completed')
+        logger.info(f'gather active endpoints - Completed - {len(results)} records checked')
     except asyncio.CancelledError as e:
         logging.warning('routine check task cancelled')
         print(f'asyncio error - {e}')
