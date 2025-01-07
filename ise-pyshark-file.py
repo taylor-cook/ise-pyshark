@@ -18,9 +18,9 @@ capture_running = False
 capture_count = 0
 skipped_packet = 0
 
-# mac_filter = 'eth.addr == 20:cf:ae:55:db:82'
-# if mac_filter != '':
-#     default_filter = mac_filter + ' && ' + default_filter
+mac_filter = 'eth.addr == 1e:0b:82:f1:7c:50'
+if mac_filter != '':
+    default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
 packet_callbacks = {
     'mdns': parser.parse_mdns_v7,
@@ -110,7 +110,9 @@ def update_ise_endpoints(local_redis, remote_redis):
                                     new_protos = set(attributes['isepyProtocols'].split(','))
                                     ise_protos = set(ise_custom_attrib['isepyProtocols'].split(','))
                                     ## Combine any new protocols with existing values
-                                    if new_protos != ise_protos:
+                                    if new_protos.issubset(ise_protos):
+                                        new_data = False
+                                    else:
                                         protos = list(set(ise_custom_attrib['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
                                         attributes['isepyProtocols'] = ','.join(map(str,protos))
                                         new_data = True
@@ -138,6 +140,8 @@ def update_ise_endpoints(local_redis, remote_redis):
                     redis_eps.add_or_update_entry(remote_redis,row)
 
             logger.info(f'check for endpoint updates to ISE - Start')
+            if (len(endpoint_creates) + len(endpoint_updates)) == 0:
+                logger.debug(f'no endpoints created or updated in ISE')
             if len(endpoint_updates) > 0:
                 logger.debug(f'creating, updating {len(endpoint_updates)} endpoints in ISE - Start')
                 chunk_size = 500
@@ -153,8 +157,6 @@ def update_ise_endpoints(local_redis, remote_redis):
                     chunk = endpoint_creates[i:i + chunk_size]
                     result = ise_apis.bulk_update_post(chunk)
                 logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
-            if (len(endpoint_creates) + len(endpoint_updates)) == 0:
-                logger.debug(f'no endpoints created or updated in ISE')
             end_time = time.time()
             logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
         logger.info(f'gather active endpoints - Completed')
@@ -259,7 +261,7 @@ if __name__ == '__main__':
 
     fqdn = 'https://'+ip
     
-    ## Validate that defined ISE instance has Custom Attributes defined
+    # Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')
     start_time = time.time()
     ise_apis = apis(fqdn, username, password, headers)
@@ -284,15 +286,12 @@ if __name__ == '__main__':
     process_capture_file(filename, default_filter)
     end_time = time.time()
     print(f'Time taken: {round(end_time - start_time,4)}sec')
-    redis_eps.print_endpoints(local_db)
-    # update_ise_endpoints(local_db, remote_db)
+    update_ise_endpoints(local_db, remote_db)
 
     # logger.debug(f'number of redis entries: {local_db.dbsize()}')
     logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
-    # print(f'LOCAL ENTRIES')
-    # redis_eps.print_endpoints(local_db)
-    # print(f'REMOTE ENTRIES')
-    # redis_eps.print_endpoints(remote_db)
+    print(f'LOCAL ENTRIES')
+    redis_eps.print_endpoints(local_db)
     local_db.flushdb()
     remote_db.flushdb()
     logger.info(f'redis DB cache cleared')

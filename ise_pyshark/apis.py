@@ -57,7 +57,7 @@ class apis:
         for variable_name, variable_type in vars.items():
             if variable_name not in output_attribute_names:
                 logger.warning(f"{variable_name} is missing from the configured ISE Custom Attributes.")
-                self.create_ise_attribute(self, variable_name, variable_type)
+                self.create_ise_attribute(variable_name, variable_type)
         
         # Iterate through each item in the output list
         for item in output:
@@ -97,11 +97,12 @@ class apis:
 
             ## If an endpoint exists...
             if response.status_code != 404:
+                defaults = {'isepyProtocols': '', 'isepyType': '', 'isepyDeviceID': '', 'isepyIP': '', 'isepyOS': '', 'isepyVendor': '', 'isepyModel': '', 'isepyHostname': '', 'isepyCertainty': '', 'isepySerial': ''}
                 result = response.json()
                 custom_attributes = result.get('customAttributes', {})
-                if custom_attributes ==  None:
+                if custom_attributes ==  None or custom_attributes == defaults:
                     return "no_values"
-                else:
+                elif custom_attributes != defaults:
                     custom_attributes_dict = {}
                     for key, value in custom_attributes.items():
                         custom_attributes_dict[key] = value

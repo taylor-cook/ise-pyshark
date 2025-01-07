@@ -1,29 +1,28 @@
 # ise-pyshark
  
-This repository contains the source code for performing custom Deep Packet Inspection (DPI) on observed network traffic and then sharing that contextual data with a Cisco Identity Services Engine (ISE) deployment.  This tool serves as an **CONCEPT** (non-TAC supported) of how to improve overall profiling efficacy of ISE endpoints via the use of existing API structures.  This concept relies on deploying 'collectors' throughout a network environment which will receive endpoint traffic, inspect the traffic using the "pyshark" Python library, and then update endpoints within ISE via pxGrid APIs into the endpoint "asset" fields (detailed below). 
+This repository contains the source code for performing custom Deep Packet Inspection (DPI) on observed network traffic and then sharing that contextual data with a Cisco Identity Services Engine (ISE) deployment.  This tool is **not an officially supported Cisco tool**, but services to improve overall profiling data of ISE endpoints via the use of existing API structures.  This concept relies on deploying 'collectors' throughout a network environment which will receive endpoint traffic, inspect the traffic using the "pyshark" Python library, and then update endpoints within ISE via API calls into the ISE Endpoint Database (detailed below). 
 
-The contained code relies on the assumption that various protocols transmitted by endpoints are never seen by ISE due to either due to L3 boundaries or other mechanisms but can be analyzed to provide additional endpoint context.  This includes better identification of IoT endpoints using UPnP, more precisely identifying endpoints based on User-Agent strings not presented to ISE directly for webauth, and providing more specific details to generic devices already discovered by ISE (ex. Apple Device -> MacBook Air (M1, 2020)). An example of this process with various endpoints are provided below:
+The contained code relies on the assumption that various protocols transmitted by endpoints are never seen by ISE due to either due to L3 boundaries or other mechanisms but can be analyzed to provide additional endpoint context.  This includes better identification of IoT endpoints using mDNS, UPnP or other protocols to more precisely identifying endpoints based on attributes like User-Agent strings not presented to ISE directly for webauth, and providing more specific details to generic devices already discovered by ISE (ex. Apple Device -> MacBook Air (M1, 2020)). An example of this process with various endpoints are provided below:
 
 ![Example ise-pyshark process](/img/ise-pyshark-ex1.png "Example ise-pyshark process.")
 ![Example ise-pyshark process](/img/ise-pyshark-ex2.png "Example ise-pyshark process.")
 
-This repository uses pyshark to perform all DPI functions, but other packet inspection technologies are also available (scapy, dpkt).  This repository leverages the 'pxgrid-util' python library for interactions with ISE.  More information can be found at [https://developer.cisco.com/codeexchange/github/repo/cisco-pxgrid/python-advanced-examples/] 
+This repository uses pyshark to perform all DPI functions, but other packet inspection technologies are also available (scapy, dpkt).
 
 The code included in this repository should be deployed on "collectors" throughout a network environment.  Collectors can be virtual machines (VMs) or even physical workstations as long as they can run Python and have the necessary dependency libraries installed.  A concept of collector deployment within a network is shown below:
 ![Example collector deployment](/img/collectors.png "Example collector deployment.")
 
-**NOTE**: This code is a **concept** only, and not an officially supported integration for Cisco ISE and as such, the user assumes all risks associated with deploying this code in a production network.  It is recommended to deploy this tool in a test ISE environment and heavily evaluate before considering deployment in production networks.  This will allow for fine-tuning of protocol analysis an updates via pxGrid.  If required, demo instances of ISE can be downloaded and installed with 90-Day free trials at [www.cisco.com/go/downloads].
+**NOTE**: This code is **not an officially supported integration** for Cisco ISE and as such, the user assumes all risks associated with deploying this code in a production network.  It is recommended to deploy this tool in a test ISE environment and heavily evaluate before considering deployment in production networks.  If required, demo instances of ISE can be downloaded and installed with 90-Day free trials at [www.cisco.com/go/downloads].
 
 # Features
 
-- Cisco ISE pxGrid Account Activation
-- Cert-Based ISE pxGrid Connection
-- Local sqlite3 DB caching
-- Dynamic OUI lookups via IEEE
+- Dynamic creation/verification of ISE Endpoint Custom Attributes
+- Dynamic OUI lookups via IEEE & randomized MAC detection
 - Dynamic User-Agent String Lookup
 - Dynamic Vendor Model and OS Version lookup
-- Randomized MAC detection
-- Weighted certainty factor
+- Weighted certainty factors per attribute
+- Dynamic ISE endpoint lookup/verification
+- Bulk Endpoint API updates (up to 500 endpoints at a time)
 - Supported Protocols
   - mDNS
   - SSDP
@@ -46,53 +45,36 @@ All the examples may be installed using `pip`, making the examples available in 
         pip3 install ise-pyshark
 
 # Configuration Steps
-1. Generate pxgrid client certificate and key (see below for detailed instructions)
-2. Store pxGrid certificates in same directory where script will be executed
-3. Configure SPAN / ERSPAN on switch infrastructure to point to collector -- recommend filtering ERSPAN traffic using template below
-4. Start the collector via cli with the following command (per pxgrid-util library):
+1. Configure an ISE Administrator account with ERS Admin access
+2. Configure SPAN / ERSPAN on switch infrastructure to point to collector -- recommend filtering ERSPAN traffic using template below
+3. Start the collector via cli with the following command:
 ```
-ise-pyshark \
--a <hostname> \
--n <nodename> \
--c <pxgrid-client>.cer \
--k <pxgrid-client>.key \
--s <root_ca>.pem \
---interface <interface_name>
+ise-pyshark -u <username> -p <password> -a <hostname> -i <interface_name>
 ```
 Other optional arguments:
 ```
--p <cleartext>  Cleartext password for PEM file
---verbose       Shows detailed logs as script runs.
+-D    Enable debug-level messages
 ```
-Additional arguments can be added to override default values (**use with caution**):
-```
---service <custom_pxgrid_service>
---topic <custom_pxgrid_topic>
-```
-**NOTE** If an existing DB file is found, option to append new data or wipe and start new.
-**NOTE** Linux users will need to run above commands as "sudo" due to live updates to ise-pyshark pkg files.
+**NOTE:** Linux users will need to run above commands as "sudo" due to updates required to installed ise-pyshark pkg files.
 
+# ISE Endpoint Update Example
 
-# ISE pxGrid Update Example
-
-Endpoint detail updates sent to ISE via ise-pyshark use the pxGrid 'context-in' API call in the following structure:
+Endpoint detail updates sent to ISE via ise-pyshark use the ISE endpoint API calls in the following structure, leveraging ISE endpoint Custom Attribute fields (w/ prefix 'isepy') which are auto-generated by the program itself:
 ```
 {
-    "opType": "UPDATE",
-    "asset": {
-        "assetId": "",
-        "assetName": "",
-        "assetIpAddress": "",
-        "assetMacAddress": "",
-        "assetVendor": "",
-        "assetHwRevision": "",
-        "assetSwRevision": "",
-        "assetProtocol": "",
-        "assetProductId": "",
-        "assetSerialNumber": "",
-        "assetDeviceType": ""
-    }
-}
+    "customAttributes": {
+        "isepyHostname": "Bob's MacBook Pro", 
+        "isepyVendor": "Apple, Inc.", 
+        "isepyModel": "MacBook Pro (16-in. 2023)", 
+        "isepyOS": "macOS 15 Sequoia", 
+        "isepyDeviceID": "model=Mac14,10", 
+        "isepySerial": "ABC123456", 
+        "isepyType": "Workstation", 
+        "isepyProtocols": "HTTP,mDNS", 
+        "isepyIP": "192.168.20.48", 
+        "isepyCertainty": "80,20,80,70,0,80"
+    }, 
+    "mac": "11:22:33:44:55:66"}
 ```
 # Configure ERSPAN data (example C9300 IOS-XE)
 ```
@@ -118,66 +100,40 @@ Endpoint detail updates sent to ISE via ise-pyshark use the pxGrid 'context-in' 
 ```
 More details available here [https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/16-11/configuration_guide/nmgmt/b_1611_nmgmt_9300_cg/configuring_erspan.html]
 
-# Test on existing PCAP(NG) File
-Peform a test analysis on an existing wirecapture file
-- Requires only local PCAP(NG) file 
+# Analyze existing PCAP(NG) File
+Peform analysis on an existing wirecapture file and update ISE endpoints
+- Requires ISE admin credentials and local packet capture PCAP(NG) file
 ```
-ise-pyshark-file
-
-Input local pcap(ng) file to be parsed: <file-location>/<file>.pcapng
-Input custom wireshark display filter (leave blank to use built-in display filter): 
+ise-pyshark -u <username> -p <password> -a <hostname> -f <capture_file_name>
 ```
-Once analysis is completed, all parsed endpoint data is displayed with the relevant "asset" attributes which would be used to update endpoints in ISE (ex. assetName, assetVendor, ...) 
-
-**NOTE** Running this pcap file test DOES NOT send any updates to ISE servers.
-Example Output:
+Other optional arguments:
 ```
-#######################################
-##      Resulting Endpoint Data      ##
-#######################################
-All Entries in the 'endpoints' table:
-('12:93:93:XX:XX:XX', 'mDNS', '192.168.1.143', '', 'iPhone (9)', 'Unknown (randomized MAC)', 'iPhone 13', '', 'model=D17AP', '', '', 0, 80, 0, 80, 0, 80, 0, 0, '20:51:00', 0)
-('6c:02:e0:XX:XX:XX', 'mDNS', '192.168.1.2', '', 'HP Color LaserJet Pro M478f-9f [C24C95]', 'HP', 'HP Color LaserJet Pro MFP M478f-9f', '', 'usb_MDL=Color LaserJet Pro M478f-9f', '', '', 0, 80, 50, 80, 0, 80, 50, 0, '20:51:01', 0)
-('42:99:21:XX:XX:XX', 'mDNS', '192.168.1.233', '', 'iPhone (24)', 'Unknown (randomized MAC)', 'iPhone 14 Pro Max', '', 'model=D74AP', '', '', 0, 80, 0, 80, 0, 80, 0, 0, '20:51:00', 0)
-('28:56:5a:XX:XX:XX', 'mDNS', '192.168.1.132', '', 'Brother MFC-L5850DW series', 'Brother', 'Monochrome All-in-One Printer (2-sided, 42ppm)', '', 'usb_MDL=MFC-L5850DW series', '', '', 0, 80, 50, 80, 0, 80, 50, 0, '20:51:01', 0)
+-D    Enable debug-level messages
 ```
-# View Existing Database File #
-Check existing endpoint data already collected from live capture or existing PCAP parsing
-- ise-pyshark-view
-
 # Limitations
 - Only inspects protocols listed above
 - Does not inspect IPv6 traffic
 - Recommend ISE 3.1+ version (3.2, 3.3 tested)
 
+# Removing / Uninstall
+![Removing ise-pyshark data from ISE](/img/ise-pyshark-delete.png "Removing ise-pyshark data from ISE.")
+- All ISE data is stored within CustomAttribute fields for endpoints, therefore deleting those CustomAttribute fields will remove all data added by the ise-pyshark utility
+- Collectors can simply be decomissioned or run the requisite "pip uninstall ise-pyshark" command
+
 # Other Points
 - Repository only contains code for deployment on collectors.  Custom profile definitions within ISE based on observed data and custom policy rule creation in ISE referencing custom profiles is the responsibility of the Network Adminstrator and is beyond the scope of this code.
 
-#  Steps for installing in Ubuntu VM to run as Collector (Ubuntu 22.04 LTS)
+# Steps for installing in Ubuntu VM to run as Collector (Ubuntu 22.04 LTS)
 ```
 sudo apt-get update
 sudo apt install python3-pip -y
+sudo apt install redis-server -y
 sudo apt install tshark -y
 (Select Yes)
 sudo pip install ise-pyshark
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
 ```
-
-#  Generate pxGrid Certificates From ISE
-
-If you wish to mutual cert-based authentication:
-
-- Navigate to ISE Admin GUI via any web browser and authorized login
-- Navigate to Administration -> pxGrid Services
-- Click on the Certificates tab
-- Fill in the form as follows:
-    - I want to: **Generate a single certificate (without a certificate signing request)**
-        - Common Name (CN): {fill in any name}
-        - Certificate Download Format: Certificate in Privacy Enhanced Electronic Mail (PEM) format, key in PKCS8 PEM format (including certificate chain)
-        - Certificate Password: {fill in a password}
-        - Confirm Password: {fill in the same password as above}
-- Click the 'Create' button. A zip file should download to your machine
-- Extract the downloaded file.
-
 # Feedback
 Author - Taylor Cook
 Email - aacook@cisco.com

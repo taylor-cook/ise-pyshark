@@ -107,7 +107,9 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                                     new_protos = set(attributes['isepyProtocols'].split(','))
                                     ise_protos = set(ise_custom_attrib['isepyProtocols'].split(','))
                                     ## Combine any new protocols with existing values
-                                    if new_protos != ise_protos:
+                                    if new_protos.issubset(ise_protos):
+                                        new_data = False
+                                    else:
                                         protos = list(set(ise_custom_attrib['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
                                         attributes['isepyProtocols'] = ','.join(map(str,protos))
                                         new_data = True
@@ -137,6 +139,8 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                 # elif status == True:
                 #     print(f'REDIS ENTRY EXISTS')
             logger.info(f'check for endpoint updates to ISE - Start')
+            if (len(endpoint_creates) + len(endpoint_updates)) == 0:
+                logger.debug(f'no endpoints created or updated in ISE')
             if len(endpoint_updates) > 0:
                 logger.debug(f'creating, updating {len(endpoint_updates)} endpoints in ISE - Start')
                 chunk_size = 500
@@ -158,8 +162,6 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                     except asyncio.TimeoutError:
                         logger.warning('API call to ISE for endpoint creation timed out')
                 logger.debug(f'creating {len(endpoint_creates)} new endpoints in ISE - Completed')
-            if (len(endpoint_creates) + len(endpoint_updates)) == 0:
-                logger.debug(f'no endpoints created or updated in ISE')
             end_time = time.time()
             logger.debug(f'check for endpoint updates to ISE - Completed {round(end_time - start_time,4)}sec')
         logger.info(f'gather active endpoints - Completed')
@@ -308,14 +310,14 @@ if __name__ == '__main__':
     
     username = 'api-admin'
     password = 'Password123'
-    ip = 'https://10.0.1.90'
+    ip = '10.0.1.90'
     interface = 'en0'
     
     if is_valid_IP(ip) == False:
         print('Invalid IP address provided')
         sys.exit(0)
-
-    fqdn = 'https://'+ip
+    else:
+        fqdn = 'https://'+ip
 
     ## Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')

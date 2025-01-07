@@ -143,6 +143,8 @@ class eps:
 
         # Add or update the record in the local database
         redis_db.hset(f"endpoint:{mac}", mapping=existing_data)
+        # Add a lifetime to the mac address record for when it should be purged due to inactivity (10min interval)
+        redis_db.expire(f"endpoint:{mac}",600)
         redis_db.sadd("endpoints:macs", mac)
         # logger.debug(f"Record for MAC {mac} added or updated.")
 
