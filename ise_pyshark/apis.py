@@ -69,9 +69,9 @@ class apis:
             if attribute_name in vars:
                 # Check if the attribute type matches the one in the variables dictionary
                 if vars[attribute_name] == attribute_type:
-                    logger.debug(f"Custom Attribute {attribute_name} : {attribute_type} already defined.")
+                    logger.info(f"Custom Attribute {attribute_name} : {attribute_type} already defined.")
                 else:
-                    logger.debug(f"Custom Attribute {attribute_name} : {attribute_type} does NOT match the expected type. Expected {ise_attributes[attribute_name]}, got {attribute_type}.")
+                    logger.warning(f"Custom Attribute {attribute_name} : {attribute_type} does NOT match the expected type. Expected {ise_attributes[attribute_name]}, got {attribute_type}.")
             else:
                 logger.debug(f"Skipping Custom Attribute '{attribute_name}' as it is not required for this program.")
 
@@ -110,24 +110,24 @@ class apis:
             else:
                 return None
         except requests.exceptions.RequestException as err:
-            logger.debug(f'An error occurred: {err}')
+            logger.warning(f'An error occurred: {err}')
             return None
 
     def bulk_update_put(self, update):
         url = f'{self.fqdn}/api/v1/endpoint/bulk'
         try:
             response = requests.put(url, headers=self.headers, json=update, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
-            logger.debug(f'api response = {response.json()}')
+            logger.info(f'endpoint bulk update api response = {response.json()}')
         except requests.exceptions.RequestException as err:
-            logger.warning(f'unable to update endponits within ISE - {err}')
+            logger.warning(f'unable to update endpoints within ISE - {err}')
 
     def bulk_update_post(self, update):
         url = f'{self.fqdn}/api/v1/endpoint/bulk'
         try:
             response = requests.post(url, headers=self.headers, json=update, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
-            logger.debug(f'api response = {response.json()}')
+            logger.info(f'endpoint bulk create api response = {response.json()}')
         except requests.exceptions.RequestException as err:
-            logger.warning(f'unable to update endponits within ISE - {err}')
+            logger.warning(f'unable to update endpoints within ISE - {err}')
 
     async def get_ise_endpoint_async(self, mac):
         url = f'{self.fqdn}/api/v1/endpoint/{mac}'
@@ -151,21 +151,21 @@ class apis:
             else:
                 return None
         except requests.exceptions.RequestException as err:
-            logger.debug(f'An error occurred: {err}')
+            logger.warning(f'An error occurred: {err}')
             return None
 
     async def bulk_update_put_async(self, update):
         url = f'{self.fqdn}/api/v1/endpoint/bulk'
         try:
             response = requests.put(url, headers=self.headers, json=update, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
-            logger.debug(f'api response = {response.json()}')
+            logger.info(f'endpoint bulk update api response = {response.json()}')
         except requests.exceptions.RequestException as err:
-            logger.warning(f'unable to update endponits within ISE - {err}')
+            logger.warning(f'unable to update endpoints within ISE - {err}')
 
     async def bulk_update_post_async(self, update):
         url = f'{self.fqdn}/api/v1/endpoint/bulk'
         try:
             response = requests.post(url, headers=self.headers, json=update, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
-            logger.debug(f'api response = {response.json()}')
+            logger.info(f'endpoint bulk create api response = {response.json()}')
         except requests.exceptions.RequestException as err:
-            logger.warning(f'unable to update endponits within ISE - {err}')
+            logger.warning(f'unable to update endpoints within ISE - {err}')

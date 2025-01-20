@@ -4,3 +4,6 @@ captures/
 build/
 dist/
 endpoint_database.db
+unknown_models.txt
+ise-pyshark-file.py
+ise-pyshark.py

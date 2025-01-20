@@ -133,7 +133,7 @@ class eps:
             else:
                 # Update only the timestamp if weights are not higher to show data is still valid as of new time
                 existing_data['timestamp'] = new_entry['timestamp']
-                logger.debug(f"Record for MAC {mac} not updated; weights not higher.")
+                # logger.debug(f"Record for MAC {mac} not updated; weights not higher.")
                 return
         else:
             # If no existing data, create a new entry
@@ -141,12 +141,18 @@ class eps:
             existing_data['synced_to_ise'] = 'False'
             logger.debug(f'Record for MAC {mac} added to database')
 
-        # Add or update the record in the local database
-        redis_db.hset(f"endpoint:{mac}", mapping=existing_data)
-        # Add a lifetime to the mac address record for when it should be purged due to inactivity (10min interval)
-        redis_db.expire(f"endpoint:{mac}",600)
-        redis_db.sadd("endpoints:macs", mac)
-        # logger.debug(f"Record for MAC {mac} added or updated.")
+        with redis_db.pipeline() as pipe:
+            try:
+                pipe.multi()
+                # Add or update the record in the local database
+                pipe.hset(f"endpoint:{mac}", mapping=existing_data)
+                # Add a lifetime to the mac address record for when it should be purged due to inactivity (15min interval)
+                pipe.expire(f"endpoint:{mac}",900)
+                pipe.sadd("endpoints:macs", mac)
+                pipe.execute()
+                logger.debug(f'redis execution success')
+            except:
+                logger.warning(f'redis execution error for mac {mac}')
 
     ## Compare the values provided against the remote cache DB and return TRUE or FALSE for entry presence
     def check_remote_cache(self, redis_db, mac_address, values):
@@ -322,7 +328,7 @@ class eps:
 
         # Iterate through each key and fetch its data
         i = 0
-        while i < len(keys) - 1:
+        while i <= len(keys) - 1:
             key = keys[i]
 
             try:

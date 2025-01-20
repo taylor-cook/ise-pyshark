@@ -2,7 +2,6 @@ import time
 import pyshark
 import redis
 import asyncio
-import argparse
 import ipaddress
 import logging
 import sys
@@ -18,12 +17,12 @@ capture_running = False
 capture_count = 0
 skipped_packet = 0
 
-mac_filter = 'eth.addr == 1e:0b:82:f1:7c:50'
-if mac_filter != '':
-    default_filter = mac_filter + ' && ' + default_filter
+# # mac_filter = 'eth.addr == 00:11:22:33:44:55'
+# if mac_filter != '':
+#     default_filter = mac_filter + ' && ' + default_filter
 parser = parser()
 packet_callbacks = {
-    'mdns': parser.parse_mdns_v7,
+    'mdns': parser.parse_mdns_v8,
     'xml': parser.parse_xml,
     'sip': parser.parse_sip,
     'ssdp': parser.parse_ssdp,
@@ -204,63 +203,61 @@ def process_capture_file(capture_file, capture_filter):
         logger.info(f'processing capture file complete: execution time: {end_time - start_time:0.6f} : {currentPacket} packets processed ##')
     else:
         logger.warning(f'capture file not found: {capture_file}')
+        sys.exit(0)
 
 if __name__ == '__main__':
-    # ## Parse input from initial start
-    # argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
-    # argparser.add_argument('-u', '--username', required=True, help='ISE API username')
-    # argparser.add_argument('-p', '--password', required=True, help='ISE API password')
-    # argparser.add_argument('-a', '--url', required=True, help='ISE URL')
-    # argparser.add_argument('-f', '--file', required=True, help='The PCAP(NG) file to analyze')
-    # argparser.add_argument('-D', '--debug',  required=False, action='store_true', help='Enable debug logging')
-    # args = argparser.parse_args()
-    redis_eps = eps()
-
-    # if Path(args.file).exists() == False:
-    #     logger.warning(f'Invalid capture file provided: {args.file}')
-    #     sys.exit(1)
-    
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
     logger.addHandler(handler)
-
-    # ## TEMP SETTING FOR TESTING PURPOSES 
     logger.setLevel(logging.DEBUG)
-    
-    # if args.debug == False:
-    #     logger.setLevel(logging.INFO)
-    # else:
-    #     logger.setLevel(logging.DEBUG)
-
     for modname in ['ise_pyshark.parser', 'ise_pyshark.eps', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
         s_logger = logging.getLogger(modname)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
         s_logger.addHandler(handler)
-        
-        ## TEMP SETTING FOR TESTING PURPOSES 
         s_logger.setLevel(logging.DEBUG)
-
-    #     if args.debug == False:
-    #         s_logger.setLevel(logging.INFO)
-    #     else:
-    #         s_logger.setLevel(logging.DEBUG)
-
-    # username = args.username
-    # password = args.password
-    # fqdn = 'https://' + args.url
-    # filename = args.file
-
-    username = 'api-admin'
-    password = 'Password123'
-    ip = '10.0.1.90'
-    filename = 'captures/simulation.pcapng'
-
-    if is_valid_IP(ip) == False:
-        print('Invalid IP address provided')
-        sys.exit(0)
-
-    fqdn = 'https://'+ip
     
+    print('#######################################')
+    print('##  ise-pyshark capture file')
+    print('#######################################')
+    # filename = input('Input local pcap(ng) file to be parsed: ')
+    filename = 'simulation.pcapng'
+    filter = ''
+    # filter = input('Input custom wireshark filter (leave blank to use built-in filter): ')
+    if filter == '':
+        filter = default_filter
+    print('#######################################')
+    print('##  Analyzing capture file')
+    print('#######################################')
+
+    logger.debug(f'redis DB creation - Start')
+    redis_eps = eps()
+    local_db = redis.Redis(host='localhost', port=6379, db=0)   # Use db=0 for local data
+    remote_db = redis.Redis(host='localhost', port=6379, db=1)  # Use db=1 for remote data
+    local_db.flushdb()
+    remote_db.flushdb()
+    logger.debug(f'redis DB creation - Completed')
+    
+    # ### PCAP PARSING SECTION
+    start_time = time.time()
+    process_capture_file(filename, default_filter)
+    end_time = time.time()
+    print('#######################################')
+    print('##  Capture File Analysis Complete')
+    print(f'##  Time Taken: {round(end_time - start_time,4)}sec')
+    print('#######################################')
+    redis_eps.print_endpoints(local_db)
+    update_ise = input('Send above endpoint data from PCAP(NG) file to ISE [y/n]: ')
+    if update_ise == 'y':
+        ip = input('ISE Admin Node IP Address: ')
+        if is_valid_IP(ip) == False:
+            print('Invalid IP address provided')
+            sys.exit(0)
+        username = input('ISE API Admin Username: ')
+        password = input('ISE API Admin Password: ')
+    else:
+        sys.exit(0)
+    fqdn = 'https://'+ip
+
     # Validate that defined ISE instance has Custom Attributes defined
     logger.warning(f'checking ISE custom attributes - Start')
     start_time = time.time()
@@ -269,30 +266,10 @@ if __name__ == '__main__':
     ise_apis.validate_attributes(current_attribs, variables)
     end_time = time.time()
     logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
-
-    logger.warning(f'redis DB creation - Start')
-    # Use db=0 for local data
-    local_db = redis.Redis(host='localhost', port=6379, db=0)
-    # Use db=1 for remote data
-    remote_db = redis.Redis(host='localhost', port=6379, db=1)
-
-    local_db.flushdb()
-    remote_db.flushdb()
-    logger.warning(f'redis DB creation - Completed')
-    
-    # ### PCAP PARSING SECTION
-    print('### LOADING PCAP ###')
-    start_time = time.time()
-    process_capture_file(filename, default_filter)
-    end_time = time.time()
-    print(f'Time taken: {round(end_time - start_time,4)}sec')
     update_ise_endpoints(local_db, remote_db)
-
-    # logger.debug(f'number of redis entries: {local_db.dbsize()}')
-    logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
-    print(f'LOCAL ENTRIES')
-    redis_eps.print_endpoints(local_db)
     local_db.flushdb()
     remote_db.flushdb()
     logger.info(f'redis DB cache cleared')
-    logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
+    print('#######################################')
+    print('## ISE Endpoint data updates completed ')
+    print('#######################################')

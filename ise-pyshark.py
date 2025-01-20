@@ -4,7 +4,6 @@ import redis
 import asyncio
 import argparse
 import ipaddress
-import netifaces
 import sys
 import os
 import psutil
@@ -21,7 +20,7 @@ capture_running = False
 
 parser = parser()
 packet_callbacks = {
-    'mdns': parser.parse_mdns_v7,
+    'mdns': parser.parse_mdns_v8,
     'xml': parser.parse_xml,
     'sip': parser.parse_sip,
     'ssdp': parser.parse_ssdp,
@@ -136,8 +135,6 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                             logger.debug(f"no new data for endoint: {row['mac']}")
 
                     redis_eps.add_or_update_entry(remote_redis,row, True)
-                # elif status == True:
-                #     print(f'REDIS ENTRY EXISTS')
             logger.info(f'check for endpoint updates to ISE - Start')
             if (len(endpoint_creates) + len(endpoint_updates)) == 0:
                 logger.debug(f'no endpoints created or updated in ISE')
@@ -167,7 +164,7 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
         logger.info(f'gather active endpoints - Completed - {len(results)} records checked')
     except asyncio.CancelledError as e:
         logging.warning('routine check task cancelled')
-        print(f'asyncio error - {e}')
+        logging.warning(f'asyncio error - {e}')
         raise
     except Exception as e:
         logging.warning(f'an error occured during routine check: {e}')
@@ -256,6 +253,7 @@ def capture_live_packets(network_interface, bpf_filter):
 async def default_update_loop():
     try:
         while True:
+            ## Every five minutes perform an update to ISE of any new information
             await asyncio.sleep(5.0)
             await update_ise_endpoints_async(local_db, remote_db)
     except asyncio.CancelledError as e:
@@ -263,59 +261,44 @@ async def default_update_loop():
     logger.debug(f'shutting down loop instance')
 
 if __name__ == '__main__':
-    # ## Parse input from initial start
-    # argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
-    # argparser.add_argument('-u', '--username', required=True, help='ISE API username')
-    # argparser.add_argument('-p', '--password', required=True, help='ISE API password')
-    # argparser.add_argument('-a', '--url', required=True, help='ISE URL')
-    # argparser.add_argument('-i', '--interface', required=True, help='Network interface to monitor traffic')
-    # argparser.add_argument('-D', '--debug',  required=False, action='store_true', help='Enable debug logging')
-    # args = argparser.parse_args()
-    redis_eps = eps()
-    ints = netifaces.interfaces()
-    # if args.interface not in ints:
-    #     logger.debug(f'Invalid interface name provided: {args.interface}.')
-    #     logger.debug(f'Valid interface names are: {ints}')
-    #     sys.exit(1)
+    ## Parse input from initial start
+    argparser = argparse.ArgumentParser(description="Provide ISE URL and API credentials.")
+    argparser.add_argument('-u', '--username', required=True, help='ISE API username')
+    argparser.add_argument('-p', '--password', required=True, help='ISE API password')
+    argparser.add_argument('-a', '--ip', required=True, help='ISE URL')
+    argparser.add_argument('-i', '--interface', required=True, help='Network interface to monitor traffic')
+    argparser.add_argument('-D', '--debug',  required=False, action='store_true', help='Enable debug logging')
+    args = argparser.parse_args()
 
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
     logger.addHandler(handler)
 
-    ## TEMP SETTING FOR TESTING PURPOSES 
-    logger.setLevel(logging.DEBUG)
-    
-    # if args.debug == False:
-    #     logger.setLevel(logging.INFO)
-    # else:
-    #     logger.setLevel(logging.DEBUG)
-
     for modname in ['ise_pyshark.parser', 'ise_pyshark.eps', 'ise_pyshark.ouidb', 'ise_pyshark.apis']:
         s_logger = logging.getLogger(modname)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
         s_logger.addHandler(handler)
+        if args.debug == False:
+            logger.setLevel(logging.INFO)
+            s_logger.setLevel(logging.INFO)
+        else:
+            logger.setLevel(logging.DEBUG)
+            s_logger.setLevel(logging.DEBUG)
 
-        ## TEMP SETTING FOR TESTING PURPOSES 
-        s_logger.setLevel(logging.DEBUG)
-        
-        # if args.debug == False:
-        #     s_logger.setLevel(logging.INFO)
-        # else:
-        #     s_logger.setLevel(logging.DEBUG)
+    username = args.username
+    password = args.password
+    ip = args.ip
+    interface = args.interface
 
-    # username = args.username
-    # password = args.password
-    # fqdn = 'https://' + args.url
-    # interface = args.interface
-    
-    username = 'api-admin'
-    password = 'Password123'
-    ip = '10.0.1.90'
-    interface = 'en0'
+    ints = psutil.net_if_addrs().keys()
+    if args.interface not in ints:
+        logger.warning(f'Invalid interface name provided: {args.interface}.')
+        logger.warning(f'Valid interface names are: {ints}')
+        sys.exit(1)
     
     if is_valid_IP(ip) == False:
-        print('Invalid IP address provided')
-        sys.exit(0)
+        logger.warning('Invalid IP address provided')
+        sys.exit(1)
     else:
         fqdn = 'https://'+ip
 
@@ -329,6 +312,7 @@ if __name__ == '__main__':
     logger.warning(f'existing ISE attribute verification - Completed: {round(end_time - start_time,4)}sec')
 
     logger.warning(f'redis DB creation - Start')
+    redis_eps = eps()
     # Use db=0 for local data
     local_db = redis.Redis(host='localhost', port=6379, db=0)
     # Use db=1 for remote data
@@ -371,12 +355,11 @@ if __name__ == '__main__':
         pass
     logger.warning(f'### LIVE PACKET CAPTURE STOPPED ###')
 
-    # logger.debug(f'number of redis entries: {local_db.dbsize()}')
     logger.debug(f'local entries: {local_db.dbsize()}, remote entries: {remote_db.dbsize()}')
     print(f'LOCAL ENTRIES')
     redis_eps.print_endpoints(local_db)
-    print(f'REMOTE ENTRIES')
-    redis_eps.print_endpoints(remote_db)
+    # print(f'REMOTE ENTRIES')
+    # redis_eps.print_endpoints(remote_db)
     local_db.flushdb()
     remote_db.flushdb()
     logger.info(f'redis DB cache cleared')
