@@ -89,10 +89,6 @@ class eps:
         elif redis_id == 1:     ## If utilizing the remote cache db
             new_entry = {field: str(data_array.get(field, '')) for field in fields}
 
-        # ## If this upadte includes current data from ISE
-        # if ise_sync == True:
-        #     new_entry['synced_to_ise'] = 'True'
-
         # Add dynamically generated timestamp
         new_entry['timestamp'] = datetime.now().isoformat()
         mac = new_entry['mac']
@@ -150,7 +146,7 @@ class eps:
                 pipe.expire(f"endpoint:{mac}",900)
                 pipe.sadd("endpoints:macs", mac)
                 pipe.execute()
-                logger.debug(f'redis execution success')
+                # logger.debug(f'redis execution success')
             except:
                 logger.warning(f'redis execution error for mac {mac}')
 
@@ -206,7 +202,6 @@ class eps:
                 return False
             else:
                 logger.debug(f"redis remote cache MAC address {mac_address} exists and already has the same values")
-                
                 return True
         else:
             logger.debug(f"no entry exists in redis remote cache for MAC address {mac_address}")

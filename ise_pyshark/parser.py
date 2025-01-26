@@ -54,7 +54,9 @@ class parser:
 
     ## Vendor agnostic model and OS parsing
     def parse_model_and_os(self, values, txt):
+        ## Store the model text value and give a very low certainty
         values[8] = txt
+        values[16] = 10
         model_match = False
         regex = '.*model=.*osxvers=.*'
         ## For Apple (or randomized) or potentially USB dongles with Apple devices behind
@@ -88,7 +90,6 @@ class parser:
                         break
             return values
         
-
         if 'usb_MDL=' in txt:
             values[6] = txt.replace('usb_MDL=','')
             values[14] = 70
@@ -128,12 +129,13 @@ class parser:
                 break                       ## Exit for loop through OUIs
         ## If model data doesn't match any record, record model data and use lower certainty
         if model_match is not True:
-            values[16] = 30
+            values[16] = 35
             self.record_unknown_model(values)
         return values
 
+    ## If no model is found, record to local TXT file
     def record_unknown_model(self, values):
-        record = values[0] + ' | ' + values[5] + ' | ' + values[8]
+        record = values[0] + ' | ' + values[1] + ' | ' + values[2] + ' | ' + values[5] + ' | ' + values[8]
         try:
             with open('unknown_models.txt', 'r') as file:
                 lines = file.readlines()
@@ -227,7 +229,7 @@ class parser:
                                 if matched_text in android_models['Samsung']:
                                     asset_values[6] = android_models['Samsung'][matched_text]['name']
                                     asset_values[10] = android_models['Samsung'][matched_text]['type']
-                                    asset_values[14], asset_values[16], asset_values[18] = 70, 70, 70
+                                    asset_values[14], asset_values[16], asset_values[18] = 80, 80, 80
                                     return asset_values
                             motorola_pattern = re.compile(r"(moto|Motorola).+(?=Build)")
                             motorola_match = motorola_pattern.search(asset_values[8])
@@ -242,11 +244,12 @@ class parser:
                             if asset_values[8] in android_models['Other']:
                                 asset_values[6] = android_models['Other'][asset_values[8]]['name']
                                 asset_values[10] = android_models['Other'][asset_values[8]]['type']
-                                asset_values[14], asset_values[16], asset_values[18] = 70, 70, 70
+                                asset_values[14], asset_values[16], asset_values[18] = 80, 80, 80
                                 return asset_values
                             ## If model data doesn't match any record, record model data and use lower certainty
                             else:
                                 asset_values[16] = 30
+                                self.record_unknown_model(asset_values)
                                 # logger.info(f'No model found: {values[0]}: {values[5]} - {txt}')
                 ## If a more specific match was created, don't apply generic labels
                 if model_match == False and int(asset_values[18]) < 10:
@@ -431,7 +434,7 @@ class parser:
                                 value = layer._all_fields[field_name][key]['dns.resp.name']
                                 if '_amzn-alexa._tcp.local' in value:
                                     if 'Amazon' in asset_values[5] and '_amzn-alexa._tcp.local' in layer._all_fields[field_name][key]['dns.resp.name']:
-                                        asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'Smart Device'
+                                        asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'IOT Device'
                                         asset_values[14], asset_values[18] = 30, 30
                                 if int(asset_values[12]) < 20:
                                     result = layer._all_fields[field_name][key]['dns.resp.name'].partition('.')[0]
@@ -451,7 +454,7 @@ class parser:
                                                 asset_values[12] = 70
                                             if item[0:3] == 'ad=':
                                                 asset_values = self.parse_model_and_os(asset_values, item)
-                                        if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item or 'ty=' in item:
+                                        if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item or item.startswith('ty='):
                                             asset_values = self.parse_model_and_os(asset_values, item)                            
                                         elif "name=" in item:
                                             asset_values[4] = item.partition('=')[2]

@@ -113,10 +113,12 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                                         protos = list(set(ise_custom_attrib['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
                                         attributes['isepyProtocols'] = ','.join(map(str,protos))
                                         new_data = True
+                                        break
                                 ## For other fields, if newer data different, but certainty is same, update endpoint
                                 elif attributes[key] != ise_custom_attrib[key]:
                                     logger.debug(f"mac: {row['mac']} new value for {key} - old: {ise_custom_attrib[key]} | new: {attributes[key]}")
                                     new_data = True
+                                    break
 
                         ## Check if the existing ISE fields match the new attribute values
                         if attributes['isepyCertainty'] != ise_custom_attrib['isepyCertainty']:

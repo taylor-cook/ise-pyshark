@@ -1,6 +1,6 @@
 # ise-pyshark
  
-This repository contains the source code for performing custom Deep Packet Inspection (DPI) on observed network traffic and then sharing that contextual data with a Cisco Identity Services Engine (ISE) deployment.  This tool is **not an officially supported Cisco tool**, but services to improve overall profiling data of ISE endpoints via the use of existing API structures.  This concept relies on deploying 'collectors' throughout a network environment which will receive endpoint traffic, inspect the traffic using the "pyshark" Python library, and then update endpoints within ISE via API calls into the ISE Endpoint Database (detailed below). 
+This repository contains the source code for performing custom Deep Packet Inspection (DPI) on observed network traffic and then sharing that contextual data with a Cisco Identity Services Engine (ISE) deployment.  This tool is **NOT an officially supported Cisco tool**, but services to improve overall profiling data of ISE endpoints via the use of existing API structures.  This concept relies on deploying 'collectors' throughout a network environment which will receive endpoint traffic, inspect the traffic using the "pyshark" Python library, and then update endpoints within ISE via API calls into the ISE Endpoint Database (detailed below). 
 
 The contained code relies on the assumption that various protocols transmitted by endpoints are never seen by ISE due to either due to L3 boundaries or other mechanisms but can be analyzed to provide additional endpoint context.  This includes better identification of IoT endpoints using mDNS, UPnP or other protocols to more precisely identifying endpoints based on attributes like User-Agent strings not presented to ISE directly for webauth, and providing more specific details to generic devices already discovered by ISE (ex. Apple Device -> MacBook Air (M1, 2020)). An example of this process with various endpoints are provided below:
 
@@ -39,8 +39,9 @@ All the examples may be installed using `pip`, making the examples available in 
 
 1. Have **Python 3.8 or later** available on your system
 2. Install the [tshark package (or the full Wireshark package)](https://tshark.dev/setup/install/)
-3. Optionally (**but strongly recommended**) create a virtual environment using **python venv**
-4. Install the ise-pyshark module using pip:
+3. Install redis and enable service (see https://redis.io for details per OS)
+4. Optionally (**but strongly recommended**) create a virtual environment using **python venv**
+5. Install the ise-pyshark module using pip:
 
         pip3 install ise-pyshark
 
@@ -104,20 +105,24 @@ More details available here [https://www.cisco.com/c/en/us/td/docs/switches/lan/
 Peform analysis on an existing wirecapture file and update ISE endpoints
 - Requires ISE admin credentials and local packet capture PCAP(NG) file
 ```
-ise-pyshark -u <username> -p <password> -a <hostname> -f <capture_file_name>
+ise-pyshark-file
 ```
-Other optional arguments:
+Once file parsed, data can be optionally shared with ISE:
 ```
--D    Enable debug-level messages
+Send above endpoint data from PCAP(NG) file to ISE [y/n]: 
+ISE Admin Node IP Address: <ISE PAN IP>
+ISE API Admin Username: <Username>
+ISE API Admin Password: <Password>
 ```
+
 # Limitations
 - Only inspects protocols listed above
 - Does not inspect IPv6 traffic
 - Recommend ISE 3.1+ version (3.2, 3.3 tested)
 
 # Removing / Uninstall
-![Removing ise-pyshark data from ISE](/img/ise-pyshark-delete.png "Removing ise-pyshark data from ISE.")
 - All ISE data is stored within CustomAttribute fields for endpoints, therefore deleting those CustomAttribute fields will remove all data added by the ise-pyshark utility
+![Removing ise-pyshark data from ISE](/img/ise-pyshark-delete.png "Removing ise-pyshark data from ISE.")
 - Collectors can simply be decomissioned or run the requisite "pip uninstall ise-pyshark" command
 
 # Other Points
@@ -136,4 +141,5 @@ sudo systemctl start redis-server
 ```
 # Feedback
 Author - Taylor Cook
+
 Email - aacook@cisco.com

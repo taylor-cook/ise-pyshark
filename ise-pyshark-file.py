@@ -115,10 +115,12 @@ def update_ise_endpoints(local_redis, remote_redis):
                                         protos = list(set(ise_custom_attrib['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
                                         attributes['isepyProtocols'] = ','.join(map(str,protos))
                                         new_data = True
+                                        break
                                 ## For other fields, if newer data different, but certainty is same, update endpoint
                                 elif attributes[key] != ise_custom_attrib[key]:
                                     logger.debug(f"mac: {row['mac']} new value for {key} - old: {ise_custom_attrib[key]} | new: {attributes[key]}")
                                     new_data = True
+                                    break
 
                         ## Check if the existing ISE fields match the new attribute values
                         if attributes['isepyCertainty'] != ise_custom_attrib['isepyCertainty']:
@@ -219,10 +221,8 @@ if __name__ == '__main__':
     print('#######################################')
     print('##  ise-pyshark capture file')
     print('#######################################')
-    # filename = input('Input local pcap(ng) file to be parsed: ')
-    filename = 'simulation.pcapng'
-    filter = ''
-    # filter = input('Input custom wireshark filter (leave blank to use built-in filter): ')
+    filename = input('Input local pcap(ng) file to be parsed: ')
+    filter = input('Input custom wireshark filter (leave blank to use built-in filter): ')
     if filter == '':
         filter = default_filter
     print('#######################################')
@@ -241,11 +241,11 @@ if __name__ == '__main__':
     start_time = time.time()
     process_capture_file(filename, default_filter)
     end_time = time.time()
+    redis_eps.print_endpoints(local_db)
     print('#######################################')
     print('##  Capture File Analysis Complete')
     print(f'##  Time Taken: {round(end_time - start_time,4)}sec')
     print('#######################################')
-    redis_eps.print_endpoints(local_db)
     update_ise = input('Send above endpoint data from PCAP(NG) file to ISE [y/n]: ')
     if update_ise == 'y':
         ip = input('ISE Admin Node IP Address: ')
