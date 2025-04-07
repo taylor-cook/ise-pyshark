@@ -63,6 +63,18 @@ class parser:
         if re.match(regex, txt) or ('Apple' in values[5] or 'randomized' in values[5]):
             osx_index = txt.find('osxvers=')
             model_index = txt.find('model=')
+            if model_index == -1 and txt[0:5] == 'rpMd=':
+                values[8] = txt
+                ## Replace the beginning of the string for matching JSON values
+                value_to_search = 'model=' + txt[5:]     
+                for model, result in models_data['Apple'].items():
+                    if value_to_search == model:
+                        model_match = True
+                        values[6] = result['name']
+                        values[10] = result['type']
+                        ## Assign slightly less weight for this version of model lookup match
+                        values[14], values[16], values[18] = 70, 70, 70
+                        break
             ## Parse the OSX details if included in txt value
             if osx_index != -1:
                 end_index = txt.find("',",osx_index)
@@ -204,17 +216,20 @@ class parser:
 
             if 'user_agent' in layer.field_names:
                 ua_string = layer.user_agent
-                user_agent = parse(ua_string)
+                ## Call user_agents library to extract values
+                user_agent = parse(ua_string)      
                 model_match = False
                 if user_agent.os.family == 'Other' and 'Mac OS X' in ua_string:
                     asset_values[7] = 'Mac OS X'
                     asset_values[15] = 10
                 elif user_agent.os.family != '':
                     asset_values[7] = user_agent.os.family
-                    asset_values[15] = 10           #Weak score as often just generic OS type 'Windows'
+                    ## Weak score as often just generic OS type 'Windows'
+                    asset_values[15] = 10           
                 if user_agent.os.version_string != '':
                     asset_values[7] = user_agent.os.family + ' ' + user_agent.os.version_string
-                    asset_values[15] = 30           # Still a weak score because OS details can be inaccurate (ex. 'OS X 10.15' reported on Mac running 14.2)
+                    ## Still a weak score because OS details can be inaccurate (ex. 'OS X 10.15' reported on Mac running 14.2)
+                    asset_values[15] = 30           
                 if user_agent.device.brand is not None and user_agent.device.brand != 'Other':
                     if user_agent.device.model is not None and user_agent.device.model != '' and user_agent.device.model != 'User-Agent':
                         asset_values[8] = user_agent.device.model

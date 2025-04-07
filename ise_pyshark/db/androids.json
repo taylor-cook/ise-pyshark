@@ -181,6 +181,8 @@
     "SM-A136":{"name":"Samsung Galaxy A13 5G","type":"Mobile Device"},
     "SM-A145":{"name":"Samsung Galaxy A14 LTE","type":"Mobile Device"},
     "SM-A146":{"name":"Samsung Galaxy A14 5G","type":"Mobile Device"},
+    "SM-A156":{"name":"Samsung Galaxy A15 5G","type":"Mobile Device"},
+    "SM-A166":{"name":"Samsung Galaxy A16 5G","type":"Mobile Device"},
     "SM-A205":{"name":"Samsung Galaxy A20","type":"Mobile Device"},
     "SM-A207":{"name":"Samsung Galaxy A20s","type":"Mobile Device"},
     "SM-A217":{"name":"Samsung Galaxy A21s","type":"Mobile Device"},
@@ -198,6 +200,7 @@
     "SM-A326":{"name":"Samsung Galaxy A32 5G","type":"Mobile Device"},
     "SM-A336":{"name":"Samsung Galaxy A33 5G","type":"Mobile Device"},
     "SM-A346":{"name":"Samsung Galaxy A34 5G","type":"Mobile Device"},
+    "SM-A356":{"name":"Samsung Gaalxy A35 5G","type":"Mobile Device"},
     "SM-A405":{"name":"Samsung Galaxy A40","type":"Mobile Device"},
     "SM-A415":{"name":"Samsung Galaxy A41","type":"Mobile Device"},
     "SM-A426":{"name":"Samsung Galaxy A42 5G","type":"Mobile Device"},
@@ -256,6 +259,7 @@
     "SM-N981":{"name":"Samsung Galaxy Note 20 5G","type":"Mobile Device"},
     "SM-N985":{"name":"Samsung Galaxy Note 20 Ultra LTE","type":"Mobile Device"},
     "SM-N986":{"name":"Samsung Galaxy Note 20 Ultra 5G'","type":"Mobile Device"},
+    "SM-S134":{"name":"Samsung Galaxy A03s","type":"Mobile Device"},
     "SM-S426":{"name":"Samsung Galaxy A42 5G","type":"Mobile Device"},
     "SM-S711":{"name":"Samsung Galaxy S23 FE","type":"Mobile Device"},
     "SM-S901":{"name":"Samsung Galaxy S22","type":"Mobile Device"},
@@ -266,6 +270,9 @@
     "SM-S918":{"name":"Samsung Galaxy S23 Ultra","type":"Mobile Device"},
     "SM-S921":{"name":"Samsung Galaxy S24","type":"Mobile Device"},
     "SM-S926":{"name":"Samsung Galaxy S24+","type":"Mobile Device"},
-    "SM-S928":{"name":"Samsung Galaxy S24 Ultra","type":"Mobile Device"}
+    "SM-S928":{"name":"Samsung Galaxy S24 Ultra","type":"Mobile Device"},
+    "SM-S931":{"name":"Samsung Galaxy S25","type":"Mobile Device"},
+    "SM-S936":{"name":"Samsung Galaxy S25+","type":"Mobile Device"},
+    "SM-S938":{"name":"Samsung Galaxy S25 Ultra","type":"Mobile Device"}
     }
 }

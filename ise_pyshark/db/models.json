@@ -251,6 +251,8 @@
     "model=iPad13,19":{"name":"iPad (10th Gen)","type":"Mobile Device"},
     "model=J271AP":{"name":"iPad (10th Gen)","type":"Mobile Device"},
     "model=J272AP":{"name":"iPad (10th Gen)","type":"Mobile Device"},
+    "model=iPad15,7":{"name":"iPad (A16)","type":"Mobile Device"},
+    "model=iPad15,8":{"name":"iPad (A16)","type":"Mobile Device"},
     "model=J1AP":{"name":"iPad (3rd Gen)","type":"Mobile Device"},
     "model=J2AAP":{"name":"iPad (3rd Gen)","type":"Mobile Device"},
     "model=J2AP":{"name":"iPad (3rd Gen)","type":"Mobile Device"},
@@ -299,9 +301,12 @@
     "model=J71AP":{"name":"iPad Air","type":"Mobile Device"},
     "model=J72AP":{"name":"iPad Air","type":"Mobile Device"},
     "model=J73AP":{"name":"iPad Air","type":"Mobile Device"},
+    "model=J507AP":{"name":"iPad Air (11-in. M2)","type":"Mobile Device"},
     "model=J508AP":{"name":"iPad Air (11-in. M2)","type":"Mobile Device"},
     "model=iPad14,10":{"name":"iPad Air (13-in. M2 2024)","type":"Mobile Device"},
     "model=iPad14,11":{"name":"iPad Air (13-in. M2 2024)","type":"Mobile Device"},
+    "model=iPad15,5":{"name":"iPad Air (13-in. M3 2025)","type":"Mobile Device"},
+    "model=iPad15,6":{"name":"iPad Air (13-in. M3 2025)","type":"Mobile Device"},
     "model=iPad11,3":{"name":"iPad Air (3rd Gen)","type":"Mobile Device"},
     "model=iPad11,4":{"name":"iPad Air (3rd Gen)","type":"Mobile Device"},
     "model=J217AP":{"name":"iPad Air (3rd Gen)","type":"Mobile Device"},
@@ -320,6 +325,8 @@
     "model=J82AP":{"name":"iPad Air 2","type":"Mobile Device"},
     "model=iPad14,8":{"name":"iPad Air(11-in. M2 2024)","type":"Mobile Device"},
     "model=iPad14,9":{"name":"iPad Air(11-in. M2 2024)","type":"Mobile Device"},
+    "model=iPad15,3":{"name":"iPad Air(11-in. M3 2025)","type":"Mobile Device"},
+    "model=iPad15,4":{"name":"iPad Air(11-in. M3 2025)","type":"Mobile Device"},
     "model=iPad2,5":{"name":"iPad mini","type":"Mobile Device"},
     "model=iPad2,6":{"name":"iPad mini","type":"Mobile Device"},
     "model=iPad2,7":{"name":"iPad mini","type":"Mobile Device"},
@@ -469,6 +476,8 @@
     "model=iPhone17,1":{"name":"iPhone 16 Pro","type":"Mobile Device"},
     "model=D94AP":{"name":"iPhone 16 Pro Max","type":"Mobile Device"},
     "model=iPhone17,2":{"name":"iPhone 16 Pro Max","type":"Mobile Device"},
+    "model=V59AP":{"name":"iPhone 16e","type":"Mobile Device"},
+    "model=iPhone17,5":{"name":"iPhone 16e","type":"Mobile Device"},
     "model=N82AP":{"name":"iPhone 3G","type":"Mobile Device"},
     "model=iPhone1,2":{"name":"iPhone 3G","type":"Mobile Device"},
     "model=N88AP":{"name":"iPhone 3GS","type":"Mobile Device"},
@@ -592,6 +601,8 @@
     "model=Mac14,13":{"name":"Mac Studio (M2 Max 2023)","type":"Workstation"},
     "model=J475dAP":{"name":"Mac Studio (M2 Ultra 2023)","type":"Workstation"},
     "model=Mac14,14":{"name":"Mac Studio (M2 Ultra 2023)","type":"Workstation"},
+    "model=Mac15,14":{"name":"Mac Studio (M3 Ultra 2025)","type":"Workstation"},
+    "model=Mac16,9":{"name":"Mac Studio (M4 Max 2025)","type":"Workstation"},
     "model=MacBook7,1":{"name":"MacBook (13-in. Mid 2010)","type":"Workstation"},
     "model=MacBook10,1":{"name":"MacBook (Retina 12-in. 2017)","type":"Workstation"},
     "model=MacBook8,1":{"name":"MacBook (Retina 12-in. Early 2015)","type":"Workstation"},
@@ -612,6 +623,10 @@
     "model=Mac14,15":{"name":"MacBook Air (15-in. M2 2023)","type":"Workstation"},
     "model=J615AP":{"name":"MacBook Air (15-in. M3 2024)","type":"Workstation"},
     "model=Mac15,13":{"name":"MacBook Air (15-in. M3 2024)","type":"Workstation"},
+    "model=J713AP":{"name":"MacBook Air (13-in. M4 2025)","type":"Workstation"},
+    "model=Mac16,12":{"name":"MacBook Air (13-in. M4 2025)","type":"Workstation"},
+    "model=J715AP":{"name":"MacBook Air (15-in. M4 2025)","type":"Workstation"},
+    "model=Mac16,13":{"name":"MacBook Air (15-in. M4 2025)","type":"Workstation"},
     "model=J313AP":{"name":"MacBook Air (M1 2020)","type":"Workstation"},
     "model=MacBookAir10,1":{"name":"MacBook Air (M1 2020)","type":"Workstation"},
     "model=J413AP":{"name":"MacBook Air (M2 2022)","type":"Workstation"},
@@ -712,10 +727,21 @@
     "model=RackMac3,1":{"name":"Xserve G5 ","type":"Workstation"}
     },
     "Chengdu Meross Technology":{
+    "md=MOP320":{"name":"Smart Wi-Fi Indoor/Outdoor Plug","type":"IOT Device"},
+    "md=MPD100":{"name":"Smart Outdoor Dimmer Plug","type":"IOT Device"},
+    "md=MSS105":{"name":"Smart Wi-Fi Plug Mini (US)","type":"IOT Device"},
     "md=MSS110":{"name":"Smart Wi-Fi Plug Mini (US/CA/JP)","type":"IOT Device"},
     "md=MSS115":{"name":"Matter Smart Plug Mini","type":"IOT Device"},
+    "md=MSS120":{"name":"Smart Wi-Fi Plug","type":"IOT Device"},
+    "md=MSS210":{"name":"Smart Wi-Fi Plug","type":"IOT Device"},
     "md=MSS305":{"name":"Smart Wi-Fi Plug w. Energy Monitor","type":"IOT Device"},
-    "md=MSS315":{"name":"Smart Wi-Fi Plug Mini","type":"IOT Device"}
+    "md=MSS310":{"name":"Smart Wi-Fi Plug w. Energy Monitor","type":"IOT Device"},
+    "md=MSS315":{"name":"Smart Wi-Fi Plug Mini","type":"IOT Device"},
+    "md=MSS425":{"name":"Smart Wi-Fi Surge Protector","type":"IOT Device"},
+    "md=MSS426":{"name":"Smart Wi-Fi Surge Protector","type":"IOT Device"},
+    "md=MSS620":{"name":"Smart Wi-Fi Indoor/Outdoor Plug","type":"IOT Device"},
+    "md=MSS630":{"name":"Smart Wi-Fi Indoor/Outdoor Plug","type":"IOT Device"},
+    "md=MSP8441":{"name":"Smart Wi-Fi Charging Power Strip","type":"IOT Device"}
     },
     "Cisco":{
     "CTM-C4402":{"name":"Contemporary SIP 1-Line Cordless Accessory Handset","type":"IP Phone"},
@@ -829,12 +855,6 @@
     "md=XboxOneS":{"name":"Xbox One S","type":"Gaming Device"},
     "md=XboxOneX":{"name":"Xbox One X","type":"Gaming Device"}
     },
-    "Murata Manufacturing":{
-    "SM-G975U":{"name":"Galaxy S10 Plus","type":"Mobile Device"},
-    "SM-G975U1":{"name":"Galaxy S10 Plus (128GB)","type":"Mobile Device"},
-    "SM-G975U2":{"name":"Galaxy S10 Plus","type":"Mobile Device"},
-    "SM-G975UC":{"name":"Galaxy S10 Plus","type":"Mobile Device"}
-    },
     "Netgear":{
     "modelname=EX6100":{"name":"AC750 Dual Band Wifi Range Extender","type":"Network Device"},
     "modelname=EX6100v2":{"name":"AC750 Wifi Range Extender (v2)","type":"Network Device"}
@@ -885,6 +905,7 @@
     "model=3600X":{"name":"Roku Streaming Stick","type":"IOT Device"},
     "model=3700X":{"name":"Roku Express","type":"IOT Device"},
     "model=3710X":{"name":"Roku Express+","type":"IOT Device"},
+    "model=3800RW":{"name":"Roku Streaming Stick Gen6","type":"IOT Device"},
     "model=3800X":{"name":"Roku Streaming Stick","type":"IOT Device"},
     "model=3810X":{"name":"Roku Streaming Stick+","type":"IOT Device"},
     "model=3811X":{"name":"Roku Streaming Stick+","type":"IOT Device"},
@@ -1067,4 +1088,4 @@
     "md=V705M-K03":{"name":"Vizio SmartCast UHD TV 70-in.","type":"Smart TV"},
     "md=V755M-K03":{"name":"Vizio SmartCast UHD TV 75-in.","type":"Smart TV"}
     }
-}   
+}

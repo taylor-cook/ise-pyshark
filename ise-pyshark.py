@@ -49,6 +49,22 @@ def is_valid_IP(address):
     except ipaddress.AddressValueError:
         return False
 
+# Iterate over the list of fields to extract
+async def extract_attributes(data_dict, fields):
+    extracted_fields = {}
+    for field in fields:
+        # Check if the field exists in the given dictionary
+        if field in data_dict:
+            # Add the field and its value to the extracted fields dictionary
+            extracted_fields[field] = data_dict[field]
+        else:
+            # Return None if any specified field is missing
+            return None
+
+    # Return the dictionary with the extracted fields and their values
+    return extracted_fields
+
+## Pull up the cache of local endpoints and then send updates to ISE
 async def update_ise_endpoints_async(local_redis, remote_redis):
     try:
         logger.info(f'gather active endpoints - Start')
@@ -79,64 +95,77 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                 status = await redis_eps.check_remote_cache_async(remote_redis, row['mac'], attributes)
                 ## If the value does not exist in remote redis cache, check returned API information against captured values
                 if status == False:
-                    ise_custom_attrib = await ise_apis.get_ise_endpoint_async(row['mac'])
-                    if ise_custom_attrib == "no_values":
-                        ## If endpoint exists, but custom attributes not populated, add to update queue
-                        update = { "customAttributes": attributes, "mac": row['mac'] }
-                        endpoint_updates.append(update)
-                    elif ise_custom_attrib is None:
-                        ## If endpoint does not exist, add to create queue
-                        update = { "customAttributes": attributes, "mac": row['mac'] }
-                        endpoint_creates.append(update)
-                    else:                  
-                        ## If endpoint already created and has isepy CustomAttributes populated
-                        new_data = False
-                        old_certainty = ise_custom_attrib['isepyCertainty'].split(',')
-                        new_certainty = attributes['isepyCertainty'].split(',')
-                        if len(old_certainty) != len(new_certainty):
-                            logger.debug(f"Certainty values are of different lengths for {row['mac']}. Cannot compare.")
+                    ise_endpoint = await ise_apis.get_ise_endpoint_full_async(row['mac'])
+                    ## If endpoint does not exist, add to create queue
+                    if ise_endpoint is None:
+                        create = { "customAttributes": attributes, "mac": row['mac'] }
+                        endpoint_creates.append(create)
+                    ## If the endpoint record exits
+                    else:
+                        isepy_fields = ['isepyProtocols','isepyType','isepyDeviceID','isepyIP','isepyOS','isepyVendor','isepyModel','isepyHostname','isepyCertainty','isepySerial']
+                        isepy_fields_empty = {'isepyProtocols': '', 'isepyType': '', 'isepyDeviceID': '', 'isepyIP': '', 'isepyOS': '', 'isepyVendor': '', 'isepyModel': '', 'isepyHostname': '', 'isepyCertainty': '', 'isepySerial': ''}
+                        ## If the customAttributes field isn't populated, store empty values for populating endpoint details from isepy
+                        if ise_endpoint.get('customAttributes',{}) == None:
+                            ise_endpoint['customAttributes'] = isepy_fields_empty
+                            ise_endpoint_customAttrib_all = isepy_fields_empty
+                        else:
+                            ise_endpoint_customAttrib_all = ise_endpoint.get('customAttributes',{})
+                        isepy_fields_values = await extract_attributes(ise_endpoint_customAttrib_all,isepy_fields)
                         
-                        ## If certainty score is weighted the same, check individual values for update
-                        if attributes['isepyCertainty'] == ise_custom_attrib['isepyCertainty']:
-                            logger.debug(f"mac: {row['mac']} - certainty values are the same - checking individual values")
-                            ## Iterate through data fields and check against ISE current values
-                            for key in attributes:
-                                ## If checking the protocols observed field...
-                                if key == 'isepyProtocols':
-                                    new_protos = set(attributes['isepyProtocols'].split(','))
-                                    ise_protos = set(ise_custom_attrib['isepyProtocols'].split(','))
-                                    ## Combine any new protocols with existing values
-                                    if new_protos.issubset(ise_protos):
-                                        new_data = False
-                                    else:
-                                        protos = list(set(ise_custom_attrib['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
-                                        attributes['isepyProtocols'] = ','.join(map(str,protos))
+                        ## If the returned endpoint record lacks any customAttribute data for isepy
+                        if isepy_fields_values == None or isepy_fields_values == isepy_fields_empty:
+                            ## only update the existing json with new isepy customAttributes only
+                            for field in isepy_fields:
+                                ise_endpoint['customAttributes'][field] = attributes[field]
+                            endpoint_updates.append(ise_endpoint)
+                        else:
+                            ## If endpoint already created and has isepy CustomAttributes populated
+                            new_data = False
+                            old_certainty = isepy_fields_values['isepyCertainty'].split(',')
+                            new_certainty = attributes['isepyCertainty'].split(',')
+                            ## Ensure the format of the isepyCertainty is correct
+                            if len(old_certainty) != len(new_certainty):
+                                logger.debug(f"Certainty values are of different lengths for {row['mac']}. Cannot compare.")
+                            ## If certainty score is weighted the same, check individual values for update
+                            if attributes['isepyCertainty'] == isepy_fields_values['isepyCertainty']:
+                                logger.debug(f"mac: {row['mac']} - certainty values are the same - checking individual values")
+                                ## Iterate through data fields and check against ISE current values
+                                for key in attributes:
+                                    ## If checking the protocols observed field...
+                                    if key == 'isepyProtocols':
+                                        new_protos = set(attributes['isepyProtocols'].split(','))
+                                        ise_protos = set(isepy_fields_values['isepyProtocols'].split(','))
+                                        ## Combine any new protocols with existing values
+                                        if new_protos.issubset(ise_protos):
+                                            new_data = False
+                                        else:
+                                            protos = list(set(isepy_fields_values['isepyProtocols'].split(',')) | set(attributes['isepyProtocols'].split(',')))
+                                            attributes['isepyProtocols'] = ','.join(map(str,protos))
+                                            new_data = True
+                                            break
+                                    ## For other fields, if newer data different, but certainty is same, update endpoint
+                                    elif attributes[key] != isepy_fields_values[key]:
+                                        logger.debug(f"mac: {row['mac']} new value for {key} - old: {isepy_fields_values[key]} | new: {attributes[key]}")
                                         new_data = True
                                         break
-                                ## For other fields, if newer data different, but certainty is same, update endpoint
-                                elif attributes[key] != ise_custom_attrib[key]:
-                                    logger.debug(f"mac: {row['mac']} new value for {key} - old: {ise_custom_attrib[key]} | new: {attributes[key]}")
-                                    new_data = True
-                                    break
-
-                        ## Check if the existing ISE fields match the new attribute values
-                        if attributes['isepyCertainty'] != ise_custom_attrib['isepyCertainty']:
-                            logger.debug(f"different certainty values for {row['mac']}")
-                            # Compare element-wise
-                            for i in range(len(old_certainty)):
-                                # Convert strings to integers
-                                value1 = int(old_certainty[i])
-                                value2 = int(new_certainty[i])
-                                if value2 > value1:
-                                    new_data = True
-                        ## If the local redis values have newer data for the endpoint, add to ISE update queue
-                        if new_data == True:
-                            update = { "customAttributes": attributes, "mac": row['mac'] } 
-                            endpoint_updates.append((update))
-                        else:
-                            logger.debug(f"no new data for endoint: {row['mac']}")
-
-                    redis_eps.add_or_update_entry(remote_redis,row, True)
+                            ## Check if the existing ISE fields match the new attribute values
+                            if attributes['isepyCertainty'] != isepy_fields_values['isepyCertainty']:
+                                logger.debug(f"different certainty values for {row['mac']}")
+                                # Compare element-wise
+                                for i in range(len(old_certainty)):
+                                    # Convert strings to integers
+                                    value1 = int(old_certainty[i])
+                                    value2 = int(new_certainty[i])
+                                    if value2 > value1:
+                                        new_data = True
+                            ## If the local redis values have newer data for the endpoint, add to ISE update queue
+                            if new_data == True:
+                                for field in isepy_fields:
+                                    ise_endpoint['customAttributes'][field] = attributes[field]
+                                endpoint_updates.append(ise_endpoint)
+                            else:
+                                logger.debug(f"no new data for endoint: {row['mac']}")
+                    redis_eps.add_or_update_entry(remote_redis,row,True)
             logger.info(f'check for endpoint updates to ISE - Start')
             if (len(endpoint_creates) + len(endpoint_updates)) == 0:
                 logger.debug(f'no endpoints created or updated in ISE')
@@ -145,7 +174,6 @@ async def update_ise_endpoints_async(local_redis, remote_redis):
                 chunk_size = 500
                 for i in range(0, len(endpoint_updates),chunk_size):
                     chunk = endpoint_updates[i:i + chunk_size]
-                    ## TODO perform similar try/except blocks with timeouts for other API and async-based functions
                     try:
                         result = await asyncio.wait_for(ise_apis.bulk_update_put_async(chunk), timeout=3)
                     except asyncio.TimeoutError:
@@ -255,7 +283,7 @@ def capture_live_packets(network_interface, bpf_filter):
 async def default_update_loop():
     try:
         while True:
-            ## Every five minutes perform an update to ISE of any new information
+            ## Every five SECONDS perform an update to ISE of any new information (testing)
             await asyncio.sleep(5.0)
             await update_ise_endpoints_async(local_db, remote_db)
     except asyncio.CancelledError as e:

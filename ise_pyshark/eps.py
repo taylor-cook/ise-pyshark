@@ -1,6 +1,7 @@
 import redis
 import logging
 import time
+import csv
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,43 @@ class eps:
 
         return updated_records
 
+    def export_redis_to_csv(self,redis_db,filename):
+        # Define the key pattern or specific keys you want to fetch
+        key_pattern = '*:*'  # Adjust this pattern based on your data
+
+        # Retrieve keys matching the pattern
+        keys = redis_db.keys(key_pattern)
+        
+        column_names = [
+            'mac', 'protocols', 'ip', 'name', 'vendor', 'hw', 'sw',
+            'productID', 'serial', 'device_type', 'name_weight',
+            'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight',
+            'serial_weight', 'device_type_weight', 'timestamp' ]
+        
+        with open(filename, mode='w', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
+
+            # Write the header row
+            csv_writer.writerow(column_names)
+
+            for key in keys:
+                try:
+                    # Check if the key is of type 'hash'
+                    if redis_db.type(key).decode('utf-8') == 'hash':
+                        entry = redis_db.hgetall(key)
+                        row = []
+                        for col in column_names:
+                            value = entry.get(col.encode(), b'').decode()
+                            row.append(value)
+                        # Write the formatted row to the CSV file
+                        csv_writer.writerow(row)
+                    else:
+                        # Do nothing as this is not a hash type record
+                        pass
+                except redis.exceptions.ResponseError as e:
+                    print(f"Error processing key {key.decode('utf-8')}: {e}")
+
+
     # Print all entries of defined redis DB
     def print_endpoints(self,redis_db):
         # Define the key pattern or specific keys you want to fetch
@@ -310,30 +348,46 @@ class eps:
         # Retrieve keys matching the pattern
         keys = redis_db.keys(key_pattern)
 
-        # Define the column names
+        # Define the column names (ignore 'id' and 'id_weight' fields)
         column_names = [
-            'mac', 'protocols', 'ip', 'id', 'name', 'vendor', 'hw', 'sw',
-            'productID', 'serial', 'device_type', 'id_weight', 'name_weight',
+            'mac', 'protocols', 'ip', 'name', 'vendor', 'hw', 'sw',
+            'productID', 'serial', 'device_type', 'name_weight',
             'vendor_weight', 'hw_weight', 'sw_weight', 'productID_weight',
-            'serial_weight', 'device_type_weight', 'timestamp', 'synced_to_ise'
+            'serial_weight', 'device_type_weight', 'timestamp'
         ]
 
-        # Print the column names
-        print('|'.join(column_names))
-
+        max_width = 17
+        header_row = []
+        for col in column_names:
+            if col.endswith('name_weight'):
+                header = 'Weights                    '
+            elif col.endswith('_weight'):
+                continue
+            else:
+                header = col.ljust(max_width,' ')
+            header_row.append(header)
+        print('|'.join(header_row))
+        
         # Iterate through each key and fetch its data
-        i = 0
-        while i <= len(keys) - 1:
-            key = keys[i]
-
+        for key in keys:
             try:
                 # Check if the key is of type 'hash'
                 if redis_db.type(key).decode('utf-8') == 'hash':
                     entry = redis_db.hgetall(key)
-                    row = [entry.get(col.encode(), b'').decode() for col in column_names]
+                    row = []
+                    for col in column_names:
+                        value = entry.get(col.encode(), b'').decode()
+                        if not value:  # Check for blank value
+                            formatted_value = ' ' * max_width  # Print a blank value 18 characters long
+                        elif col.endswith('_weight'):
+                            formatted_value = value[:3].ljust(3,' ')  # Limit to 2 characters for "_weight" columns
+                        else:
+                            formatted_value = value[:max_width].ljust(max_width,' ')  # Limit to 20 characters for other columns
+
+                        row.append(formatted_value)
                     print('|'.join(row))
                 else:
-                    print(f"Skipping key {key.decode('utf-8')} - not a hash type.")
+                    i = 1  ## Do nothing as this is not a hash type record
+                    # print(f"Skipping key {key.decode('utf-8')} - not a hash type.")
             except redis.exceptions.ResponseError as e:
                 print(f"Error processing key {key.decode('utf-8')}: {e}")
-            i += 1

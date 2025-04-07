@@ -3,7 +3,7 @@ ise_pyshark.egg-info/
 captures/
 build/
 dist/
-endpoint_database.db
+dev/
 unknown_models.txt
 ise-pyshark-file.py
 ise-pyshark.py

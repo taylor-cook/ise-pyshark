@@ -113,6 +113,22 @@ class apis:
             logger.warning(f'An error occurred: {err}')
             return None
 
+    def get_ise_endpoint_full(self, mac):
+        url = f'{self.fqdn}/api/v1/endpoint/{mac}'
+        try:
+            start_get = time.time()
+            response = requests.get(url, headers=self.headers, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
+            end_get = time.time()
+            logger.debug(f'requesting ISE data for {mac} - ISE response time: {round(end_get - start_get,4)}sec')
+            ## If an endpoint exists, return the full endpoint API response...
+            if response.status_code != 404:
+                return response.json()
+            else:
+                return None
+        except requests.exceptions.RequestException as err:
+            logger.warning(f'An error occurred: {err}')
+            return None
+
     def bulk_update_put(self, update):
         url = f'{self.fqdn}/api/v1/endpoint/bulk'
         try:
@@ -143,11 +159,26 @@ class apis:
                 if custom_attributes ==  None:
                     return "no_values"
                 else:
-                    # print(f'API response for {mac}: {custom_attributes}')
                     custom_attributes_dict = {}
                     for key, value in custom_attributes.items():
                         custom_attributes_dict[key] = value
                     return custom_attributes
+            else:
+                return None
+        except requests.exceptions.RequestException as err:
+            logger.warning(f'An error occurred: {err}')
+            return None
+
+    async def get_ise_endpoint_full_async(self, mac):
+        url = f'{self.fqdn}/api/v1/endpoint/{mac}'
+        try:
+            start_get = time.time()
+            response = requests.get(url, headers=self.headers, auth=HTTPBasicAuth(self.user, self.pwd), verify=False)
+            end_get = time.time()
+            logger.debug(f'API call to ISE for {mac} - ISE response time: {round(end_get - start_get,4)}sec')
+            ## If an endpoint exists, return the full endpoint API response...
+            if response.status_code != 404:
+                return response.json()
             else:
                 return None
         except requests.exceptions.RequestException as err:
