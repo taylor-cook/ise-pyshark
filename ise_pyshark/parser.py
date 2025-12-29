@@ -14,6 +14,8 @@ macoui_raw_data_file = 'db/macoui.txt'
 macoui_pipe_file = 'db/macoui.pipe'
 macoui_database_file = 'db/macoui.db'
 oui_manager = ouidb(macoui_url, macoui_raw_data_file, macoui_pipe_file, macoui_database_file)
+mdns_resp_types = {'1': 'a', '12':'ptr', '16':'txt', '28':'aaaa', '33':'srv', '47':'nsec', '175':'unknown'}
+mdns_ptr_printers = ['_ipp._tcp.local','_scanner._tcp.local','_uscans._tcp.local','_uscan._tcp.local','_printer._tcp.local']
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,14 @@ class parser:
                         model_match = True
                         values[6] = result['name']
                         values[10] = result['type']
+                        ## If no OS recorded yet, attempt to assign based on matched Apple device type
+                        if values[7] == '':
+                            if 'iPad' in values[6] or 'iPhone' in values[6]:
+                                values[7] = 'iOS'
+                                values[15] = 20
+                            elif 'MacBook' in values[6] or 'iMac' in values[6] or 'Mac Pro' in values[6] or 'Mac Mini' in values[6]:
+                                values[7] = 'macOS'
+                                values[15] = 20
                         values[14], values[16], values[18] = 80, 80, 80
                         break
             return values
@@ -187,7 +197,14 @@ class parser:
                 else:
                     ip = packet['ip'].duplicate_layers[0].src
             else:
-                ip = packet['ip'].src
+                ## Check if IP layer exists, otehrwise set to None
+                if 'ip' in packet:
+                    ip = packet['ip'].src
+                else:
+                    ip = None
+
+                
+                # ip = packet['ip'].src
         
             asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
             if mac is None:
@@ -202,6 +219,50 @@ class parser:
                 asset_values[2] = ip
             return asset_values
         except AttributeError:
+            return None
+
+    ## DHCP parsing to extract Vendor Class and other options -- IN PROGRESS
+    def parse_dhcp(self, packet):
+        asset_values = self.parse_mac_ip(packet)
+        asset_values[1] = 'DHCP'
+        try:
+            layer = packet['dhcp']
+            ## Ensure this is a DHCP Request packet from a client
+            if layer.type != '1':
+                return None
+            option_types = layer.option.type
+            option_tree = layer.option.type_tree
+            i = 0 
+            while i < len(option_types):
+                # if option_types[i] == '55':
+                #     print(f'DHCP PRL value - {option_tree[i].request_list_item}')
+                if option_types[i] == '60':
+                    print(f'DHCP Vendor Class : {option_tree[i].vendor_class_id}')
+                i += 1
+
+        ## Catch any exceptions and print the value of E
+        except AttributeError as E:
+            print('DHCP parse error: ', E)
+            return None
+            
+    ## CDP Parsing to extract CDP data -- IN PROGRESS
+    def parse_cdp(self, packet):
+        asset_values = self.parse_mac_ip(packet)
+        asset_values[1] = 'CDP'
+        try:
+            layer = packet['cdp']
+            ## If CDP platform present, record value
+            if 'cdp.platform' in layer._all_fields:
+                platform = layer._all_fields['cdp.platform']['cdp.platform']
+                print(f'CDP Platform: {platform}')
+            if 'Software Version' in layer._all_fields:
+                version = layer._all_fields['Software Version']['cdp.software_version'][0]
+                print(f'CDP Software Version: {version}')
+            
+            i = 1
+
+        except AttributeError as E:
+            print('CDP parse error: ', E)
             return None
 
     def parse_http(self, packet):
@@ -390,14 +451,16 @@ class parser:
             if layer.command == '0x01':             #If SMB host announcement
                 asset_values[4] = layer.server      #record the hostname field and weighting
                 asset_values[12] = 80
-                if layer.os_major == '10' and layer.os_minor == '0':
-                    asset_values[7] = 'Windows 10'
-                    asset_values[10] = 'Workstation'
-                    asset_values[15], asset_values[18] = 60, 60
-                elif layer.os_major != '':
-                    asset_values[7] = 'Windows'
-                    asset_values[10] = 'Workstation'
-                    asset_values[15], asset_values[18] = 50, 50
+                
+                ## TODO - determine more criteria to accurately assign Windows version and device type
+                # if layer.os_major == '10' and layer.os_minor == '0':
+                #     asset_values[7] = 'Windows 10'
+                #     asset_values[10] = 'Workstation'
+                #     asset_values[15], asset_values[18] = 60, 60
+                # elif layer.os_major != '':
+                #     asset_values[7] = 'Windows'
+                #     asset_values[10] = 'Workstation'
+                #     asset_values[15], asset_values[18] = 50, 50
             else:
                 layer = packet['NBDGM']             #If no SMB host announcment, check NetBIOS layer for NetBIOS name value
                 if layer.src.ip == asset_values[2]:
@@ -502,3 +565,132 @@ class parser:
         except TypeError as e:
             logger.debug(f'TypeError for {asset_values[1]} packet from {asset_values[0]}: {e}')
             return asset_values
+
+    ## New version of MDNS parser (NOT YET ACTIVE)
+    def parse_mdns_v9(self,packet):
+        asset_values = self.parse_mac_ip(packet)
+        asset_values[1] = 'mDNS'
+        try:
+            layer = packet['mdns']
+            answers = int(layer.answers)
+            auth_rrs = int(layer.auth_rr)
+            add_rrs = int(layer.add_rr)
+
+            # fields_to_check = {'Answers': answers, 'Additional records': add_rrs, 'Authoritative nameservers': auth_rrs}
+            fields_to_check = {'Answers': answers}
+
+            for field_name, count in fields_to_check.items():
+                if count > 0:
+                    for key in layer._all_fields[field_name]:
+                        type, name, domain = '', '', ''
+                        if 'dns.resp.type' in layer._all_fields[field_name][key]:
+                            ## If the record contains printer domain-name values
+                            type = layer._all_fields[field_name][key]['dns.resp.type']
+                            if 'dns.resp.name' in layer._all_fields[field_name][key]:
+                                name = layer._all_fields[field_name][key]['dns.resp.name']
+                            ## If the mdns record is IP hostname (A)
+                            if type == '1':
+                                # name = layer._all_fields[field_name][key]['dns.resp.name']
+                                i = 1
+                            ## If the mdns record is pointer (PTR)
+                            elif type == '12' and field_name == 'Answers':
+                                if name in mdns_ptr_printers:
+                                    print(f'{asset_values[0]} this is a printer - {name}')
+
+                                domain = layer._all_fields[field_name][key]['dns.ptr.domain_name']
+                                domain = domain.replace(name,'')[:-1]
+                                # print(f'mdns: {mdns_resp_types[type]}, name: {name}, domain: {domain}')
+                                i = 1
+                            ## If the mdns record is txt record (TXT)
+                            elif type == '16':
+                                i = 1
+                            ## If the mdns record is IPv6 hostname (AAAA)
+                            elif type == '28':
+                                i = 1
+                            ## If the mdns record is service (SRV)
+                            elif type == '33':
+                                domain = layer._all_fields[field_name][key]['dns.srv.name']
+                                i = 1
+
+                            # print(f'mdns: {mdns_resp_types[type]}, name: {name}, domain: {domain}')
+
+                            ## If the record is an Apple 'device-info' record, parse data and return immediately as most contains most specific data
+                            if layer._all_fields[field_name][key]['dns.resp.type'] == '16' and 'device-info' in key:
+                                result = layer._all_fields[field_name][key]['dns.resp.name'].partition('.')[0]  #Return the name up to the first '.'
+                                if int(asset_values[12]) < 80:
+                                    if '@' in result:
+                                        asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                    else:
+                                        asset_values[4] = result
+                                    asset_values[12] = 80
+                                dns_txt = str(layer._all_fields[field_name][key]['dns.txt'])
+                                asset_values = self.parse_model_and_os(asset_values, dns_txt)
+                                return asset_values
+                            ## If a host A record, extract the hostname value
+                            elif layer._all_fields[field_name][key]['dns.resp.type'] == '1':
+                                result = layer._all_fields[field_name][key]['dns.resp.name'].partition('.')[0]
+                                if int(asset_values[12]) < 70:
+                                    if '@' in result:
+                                        asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                        asset_values[12] = 70
+                                    else:
+                                        asset_values[4] = result
+                                        asset_values[12] = 40
+                            elif layer._all_fields[field_name][key]['dns.resp.type'] == '16' and '_raop._tcp' not in layer._all_fields[field_name][key]['dns.resp.name'] and 'kerberos' not in layer._all_fields[field_name][key]['dns.resp.name']:
+                                value = layer._all_fields[field_name][key]['dns.resp.name']
+                                if '_amzn-alexa._tcp.local' in value:
+                                    if 'Amazon' in asset_values[5] and '_amzn-alexa._tcp.local' in layer._all_fields[field_name][key]['dns.resp.name']:
+                                        asset_values[6], asset_values[10] = 'Amazon Alexa Device', 'IOT Device'
+                                        asset_values[14], asset_values[18] = 30, 30
+                                if int(asset_values[12]) < 20:
+                                    result = layer._all_fields[field_name][key]['dns.resp.name'].partition('.')[0]
+                                    if '@' in result:
+                                        asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                        asset_values[12] = 20
+                                    else:
+                                        asset_values[4] = result
+                                        asset_values[12] = 10
+                                if 'dns.txt' in layer._all_fields[field_name][key]:
+                                    for item in layer._all_fields[field_name][key]['dns.txt']:
+                                        if len(str(item)) == 1:     ## Avoid parsing mDNS record letter by letter
+                                            break       
+                                        if '_amzn-wplay._tcp.local' in key:
+                                            if item[0:2] == 'n=':
+                                                asset_values[4] = item[2:]
+                                                asset_values[12] = 70
+                                            if item[0:3] == 'ad=':
+                                                asset_values = self.parse_model_and_os(asset_values, item)
+                                        if 'model=' in item or 'modelname=' in item or 'mdl=' in item.lower() or 'md=' in item or 'modelid=' in item or 'usb_MDL=' in item or 'rpMd=' in item or item.startswith('ty='):
+                                            asset_values = self.parse_model_and_os(asset_values, item)                            
+                                        elif "name=" in item:
+                                            asset_values[4] = item.partition('=')[2]
+                                            asset_values[12] = 70
+                                        elif 'MFG=' in item or 'manufacturer=' in item:
+                                            asset_values[5] = item.partition('=')[2]   ## Return only the value after the '='
+                                            asset_values[13] = 50
+                                        elif 'UUID=' in item or 'serialNumber=' in item:
+                                            asset_values[9] = item.partition('=')[2]
+                                            asset_values[17] = 50
+                                        elif 'deviceid=' in item and asset_values[0] in item:
+                                            #Only store the "deviceid=" value if it is not the MAC address
+                                            if str(item.partition('=')[2]).lower() is not (asset_values[0]).lower():
+                                                asset_values[3] = item.partition('=')[2]
+                            elif 'airplay' in layer._all_fields[field_name][key] and 'TXT' in layer._all_fields[field_name][key]:
+                                result = layer._all_fields['Additional records'][key]['dns.resp.name'].partition('.')[0]  #Return the name up to the first '.'
+                                if int(asset_values[12]) < 60:
+                                    if '@' in result:
+                                        asset_values[4] = result.partition('@')[2]              #Some TXT records include <mac>@<hostname> format, return only the hostname
+                                    else:
+                                        asset_values[4] = result
+                                    asset_values[12] = 60
+                                dns_txt = str(layer._all_fields['Additional records'][key]['dns.txt'])
+                                asset_values = self.parse_model_and_os(asset_values, dns_txt)
+
+            return asset_values
+        except AttributeError:
+            logger.debug(f'AttributeError for {asset_values[1]} packet from {asset_values[0]}: {e}')
+            return asset_values
+        except TypeError as e:
+            logger.debug(f'TypeError for {asset_values[1]} packet from {asset_values[0]}: {e}')
+            return asset_values
+        
