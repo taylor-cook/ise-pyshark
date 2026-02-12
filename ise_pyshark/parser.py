@@ -202,9 +202,6 @@ class parser:
                     ip = packet['ip'].src
                 else:
                     ip = None
-
-                
-                # ip = packet['ip'].src
         
             asset_values = ['']*11 + ['0']*8      # Create an empty list for potential values
             if mac is None:
@@ -215,6 +212,7 @@ class parser:
                 asset_values[13] = 80
             else:
                 asset_values[13] = 20
+            ## If IP address is present, add to values, otherwise leave blank but still return the record with MAC and vendor details
             if ip is not None:
                 asset_values[2] = ip
             return asset_values
@@ -258,7 +256,6 @@ class parser:
             if 'Software Version' in layer._all_fields:
                 version = layer._all_fields['Software Version']['cdp.software_version'][0]
                 print(f'CDP Software Version: {version}')
-            
             i = 1
 
         except AttributeError as E:

@@ -13,5 +13,6 @@
     "osxvers=21":"macOS 12 Monterey",
     "osxvers=22":"macOS 13 Ventura",
     "osxvers=23":"macOS 14 Sonoma",
-    "osxvers=24":"macOS 15 Sequoia"
+    "osxvers=24":"macOS 15 Sequoia",
+    "osxvers=25":"macOS 26 Tahoe"
 }
